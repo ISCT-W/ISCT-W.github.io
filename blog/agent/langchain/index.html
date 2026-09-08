@@ -1,0 +1,162 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LangChain：用清晰的组件边界构建 LLM 应用 · 韦君豪</title><meta name="description" content="从固定链路与 Agent 决策的区别出发，展开模型、消息、工具、检索和结构化输出组件，并说明并发、重试与技术选型的取舍。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/agent/langchain/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/langchain/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/langchain/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/langchain/"><meta property="og:title" content="LangChain：用清晰的组件边界构建 LLM 应用 · 韦君豪"><meta property="og:description" content="从固定链路与 Agent 决策的区别出发，展开模型、消息、工具、检索和结构化输出组件，并说明并发、重试与技术选型的取舍。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/agent/langchain/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/langchain" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/agent/langchain" lang="en" hrefLang="en">EN</a><a href="/ja/blog/agent/langchain" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#agent">Agent 应用</a></nav><header class="article-header"><p class="eyebrow ">AGENT / 学习笔记</p><h1>LangChain：用清晰的组件边界构建 LLM 应用</h1><p class="article-description">从固定链路与 Agent 决策的区别出发，展开模型、消息、工具、检索和结构化输出组件，并说明并发、重试与技术选型的取舍。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 12 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>应用需要的并不总是一个能够自行规划的 Agent。单次调用、固定检索链路、模型驱动的工具循环，拥有不同的复杂度和失败方式。LangChain 提供模型、消息、工具与检索等组件，使这些工作单元可以组合；选择抽象时仍应以状态复杂度、恢复要求和维护成本为依据。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/b6a4231d87b0f1e85c77.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="LangChain：用清晰的组件边界构建 LLM 应用: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/b6a4231d87b0f1e85c77.svg" alt="LangChain：用清晰的组件边界构建 LLM 应用: 机制示意图" width="1223" height="712" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart TD
+    I["应用任务与执行约束"] --> C{"执行路径是否预先确定"}
+    C -->|"是"| W["Prompt、Model、Parser 等组件串联"]
+    C -->|"模型需要选择动作"| A["Agent 模型与工具循环"]
+    W --> O["校验结果、评估质量与成本"]
+    A --> O
+    I --> P{"是否需要持久化、审批或复杂分支"}
+    P -->|"是"| G["用 LangGraph 显式组织状态与执行"]
+    P -->|"否"| S["选择足够简单的 SDK 或组件组合"]
+</code></pre></details></div>
+<p>组件复用、模型决策和持久执行是不同层面的需要。固定流程可以使用相同模型与工具组件，复杂状态管理则需要额外的运行时协议，不能仅靠增加一次模型调用来替代。</p>
+<p>接口与机制以 2026 年 8 月的官方 Python 文档为依据。具体 API 会继续演进，使用时需要核对语言、版本和模块。</p>
+<h2 id="先确定抽象解决的问题">先确定抽象解决的问题</h2>
+<h3 id="组件抽象与状态运行时的分工">组件抽象与状态运行时的分工</h3>
+<p>LangChain 提供模型、消息、工具、Retriever、Prompt、Middleware、结构化输出和 Agent 等高层抽象；LangGraph 提供以 State、Node、Edge 为核心的低层有状态编排运行时，重点解决循环、分支、持久化、暂停恢复、长流程和 Human-in-the-loop。</p>
+<p>当前 LangChain 的 <code>create_agent</code> 底层运行在 LangGraph 上。因此二者不是简单竞争关系：常见做法是用 LangChain 的模型/工具组件，在需要显式控制时使用 LangGraph 编排。</p>
+<p>如果只是单次“Prompt → Model → Parser”，通常不需要 LangGraph；如果流程包含审批、恢复、循环校验或多个确定性阶段，LangGraph 的价值才明显。</p>
+<h3 id="有状态编排的成本与收益">有状态编排的成本与收益</h3>
+<p>普通 Python 完全可以写分支和循环。LangGraph 的主要价值不是“能画图”，而是把状态更新、并发合并、检查点、线程恢复、Interrupt、Streaming 和可观测执行统一成运行时协议。</p>
+<p>如果流程短、无恢复要求、团队能够维护普通代码，直接 Python 可能更简单。若任务跨分钟/小时、需要人工审批、失败后从中间恢复、查看历史状态或并行执行多个节点，LangGraph 能减少自建基础设施。</p>
+<h3 id="保持简单实现的条件">保持简单实现的条件</h3>
+<p>以下场景往往不需要：</p>
+<ul>
+<li>单次模型调用或两三个固定函数即可完成；</li>
+<li>极低延迟路径无法接受框架层开销；</li>
+<li>业务需要严格确定性，模型不应决定流程；</li>
+<li>团队只需要供应商 SDK 的少量能力；</li>
+<li>为了统一抽象反而隐藏了供应商关键能力或错误信息。</li>
+</ul>
+<p>选择框架要基于复杂度、可替换性、恢复和可观测需求，而不是因为简历上需要关键词。</p>
+<h2 id="工作流与-agent-的执行方式">工作流与 Agent 的执行方式</h2>
+<h3 id="固定工作流与运行时动作选择">固定工作流与运行时动作选择</h3>
+<p>Chain 的执行路径主要由开发者预先确定；Agent 在运行时让模型根据当前消息和工具结果决定是否调用工具、调用哪个工具以及何时结束。</p>
+<ul>
+<li>Chain 更可预测、容易测试、延迟与成本上限更清楚；</li>
+<li>Agent 更灵活，适合用户意图和步骤数不固定的问题；</li>
+<li>生产系统常采用混合方式：外层确定性 Workflow，局部节点允许 Agent 决策。</li>
+</ul>
+<p>不能把“调用了一次 LLM”称为 Agent。至少应存在模型驱动的动作选择或循环决策。</p>
+<h3 id="模型工具与观察构成的执行循环">模型、工具与观察构成的执行循环</h3>
+<p>核心循环是：把消息和可用工具交给模型；模型要么产生最终回答，要么产生 Tool Call；运行时校验并执行工具，将 Tool Result 追加到消息；模型读取结果后继续决策，直到不再调用工具或触发停止条件。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/474fdbde739a863d60bf.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="LangChain：用清晰的组件边界构建 LLM 应用: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/474fdbde739a863d60bf.svg" alt="LangChain：用清晰的组件边界构建 LLM 应用: 机制示意图" width="499" height="547" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart LR
+    U["User message"] --> M["Model"]
+    M -->|"final answer"| E["End"]
+    M -->|"tool call"| V["Schema / policy validation"]
+    V --> T["Tool execution"]
+    T --> R["Tool result message"]
+    R --> M
+</code></pre></details></div>
+<p>生产实现还要限制最大步数、总 Token、总时间、并行工具数和副作用权限，避免无限循环或成本失控。</p>
+<h2 id="组合并发与交付方式">组合、并发与交付方式</h2>
+<h3 id="用-runnable-组合工作单元">用 Runnable 组合工作单元</h3>
+<p>LCEL（LangChain Expression Language）是用 <code>|</code> 等组合方式连接可执行组件的表达形式。其底层统一抽象是 <code>Runnable</code>：一个工作单元可以被调用、批处理、流式执行、异步执行和继续组合。</p>
+<p>典型组合是：</p>
+<pre><code class="hljs language-python">chain = prompt | model | parser
+</code></pre>
+<p><code>RunnableSequence</code> 串行传递上一步输出，<code>RunnableParallel</code> 对同一输入并行运行多个分支。LCEL 适合数据流明确的 Chain；复杂循环、有状态分支和恢复通常更适合 LangGraph。</p>
+<hr>
+<h3 id="同步异步批处理与流式接口">同步、异步、批处理与流式接口</h3>
+<p><strong>回答：</strong></p>
+<ul>
+<li><code>invoke</code>：同步处理单个输入；</li>
+<li><code>ainvoke</code>：异步处理单个输入，适合 I/O 密集调用；</li>
+<li><code>batch/abatch</code>：批量处理多个独立输入，默认实现可能使用线程池或 <code>asyncio.gather</code>，具体集成可提供原生批处理优化；</li>
+<li><code>stream/astream</code>：边生成边消费输出，改善用户感知延迟，但不自动减少总计算量。</li>
+</ul>
+<p>使用时应补充超时、取消、并发上限、Backpressure 和异常聚合，不能把“用了 async”直接等同于吞吐一定提高。</p>
+<h3 id="串行依赖与并行分支">串行依赖与并行分支</h3>
+<p>前者用于存在数据依赖的串行步骤；后者用于互不依赖、可以同时计算的分支。例如同时生成摘要和关键词可以并行，但“先检索再回答”必须串行。</p>
+<p>并行的代价包括更高瞬时 QPS、Rate Limit 风险、结果合并和部分失败处理。若多个分支写同一外部资源，还要额外解决并发安全。</p>
+<h3 id="把重试放在最小安全边界">把重试放在最小安全边界</h3>
+<p>重试应放在最小的、确认可安全重试的边界，例如临时性模型/API 调用，而不是盲目重跑整个 Agent。Fallback 用于主模型、主检索器或主供应商不可用时切换备选实现。</p>
+<p>注意：</p>
+<ul>
+<li>非幂等写操作不能无条件重试；</li>
+<li>参数错误、权限错误等永久性失败不应指数退避重试；</li>
+<li>Fallback 模型可能不支持相同工具、上下文长度或结构化输出；</li>
+<li>重试会放大尾延迟和成本，需要预算与熔断。</li>
+</ul>
+<h2 id="提示消息与上下文">提示、消息与上下文</h2>
+<h3 id="提示模板中的角色与数据边界">提示模板中的角色与数据边界</h3>
+<p><code>PromptTemplate</code> 主要生成字符串；<code>ChatPromptTemplate</code> 生成带 System、Human、AI、Tool 等角色的消息序列，更符合 Chat Model API。角色与消息边界会影响供应商的指令优先级、Prompt Cache 和 Tool Calling。</p>
+<p>模板变量仍然是不可信输入。用户文本应放入明确的数据位置，不能用字符串拼接让用户内容伪装成 System Instruction。</p>
+<h3 id="保留消息的结构与调用关系">保留消息的结构与调用关系</h3>
+<p>Message 不只是文本，还携带角色、Tool Call、Tool Call ID、结构化 Content Block、响应元数据和 Token Usage。Agent 循环依赖 <code>AIMessage.tool_calls</code> 与对应 <code>ToolMessage.tool_call_id</code> 正确配对。</p>
+<p>如果把全部历史压成普通字符串，容易丢失角色边界、工具调用关系和多模态结构，也不利于供应商间规范化。</p>
+<h3 id="stateruntime-context-与-store-的职责">State、Runtime Context 与 Store 的职责</h3>
+<p><strong>回答：</strong></p>
+<ul>
+<li><strong>State</strong>：本次 Thread/Workflow 中会随节点更新的可变数据，如消息、计划和中间结果；</li>
+<li><strong>Runtime Context</strong>：调用期间注入但不应成为图状态的数据，如当前用户 ID、数据库连接或依赖对象；</li>
+<li><strong>Store</strong>：跨 Thread 持久化的应用数据，如用户偏好、长期记忆或共享事实。</li>
+</ul>
+<p>将数据库连接塞进 State 会导致序列化问题；把密码写入 Checkpoint 会形成敏感数据泄漏；把所有业务数据库数据复制进 Store 也会造成双写和一致性问题。</p>
+<h2 id="工具与运行时扩展">工具与运行时扩展</h2>
+<h3 id="工具的职责输入与返回协议">工具的职责、输入与返回协议</h3>
+<p>好的 Tool 应具有单一清晰职责、稳定名称、准确描述、严格输入 Schema、明确返回结构和可观察错误。模型主要依据 Tool 名称、描述和参数 Schema 决定是否调用，因此含糊描述会直接降低工具选择准确率。</p>
+<p>工程上还应做到：</p>
+<ul>
+<li>参数使用枚举、范围和业务 ID 校验；</li>
+<li>Tool 内部重新执行身份与权限校验，不能相信模型；</li>
+<li>设置超时、重试和结果大小上限；</li>
+<li>写操作使用幂等键、审批或 Dry Run；</li>
+<li>返回稳定的错误类型，而不是把堆栈直接塞回模型。</li>
+</ul>
+<h3 id="调用意图与执行权的分离">调用意图与执行权的分离</h3>
+<p>不是。Tool Calling 是模型生成“工具名 + 参数”的结构化请求；Tool Execution 是应用程序校验请求后真正调用函数或外部系统。模型表达的是意图，执行权仍属于服务端。</p>
+<p>因此安全边界必须放在执行层：检查当前用户、Tenant、资源 ID、审批状态和参数；不能因为 Tool Schema 中没有某字段，就认为模型不可能越权。</p>
+<h3 id="用-middleware-集中处理横切逻辑">用 Middleware 集中处理横切逻辑</h3>
+<p>Middleware 在 Agent 的模型调用、工具执行等关键步骤前后提供 Hook，用来集中实现动态 Prompt/模型/工具选择、日志、重试、Fallback、速率限制、PII 检测、Guardrail、摘要和 Human-in-the-loop。</p>
+<p>它适合横切关注点，但不应隐藏关键业务状态转换。Middleware 过多会让调用顺序和错误传播难以理解，应记录执行顺序并为每层写测试。</p>
+<h3 id="按权限和阶段选择可用工具">按权限和阶段选择可用工具</h3>
+<p>静态工具在创建 Agent 时固定，简单且易测试；动态工具根据用户权限、任务阶段、上下文或模型能力在运行时筛选。动态工具可以减少模型选择空间并阻止暴露无权工具。</p>
+<p>但工具隐藏不是权限控制的替代品：即使某工具没有提供给模型，工具执行入口仍必须校验权限。工具集合频繁变化还会影响 Prompt Cache 和模型行为稳定性。</p>
+<h2 id="结构化结果与检索组件">结构化结果与检索组件</h2>
+<h3 id="供应商约束与工具策略的结构化输出">供应商约束与工具策略的结构化输出</h3>
+<p><code>ProviderStrategy</code> 使用模型供应商原生的结构化输出约束，通常可靠性更高；<code>ToolStrategy</code> 通过 Tool Calling 让模型按 Schema 返回结构化数据，适用于支持工具但没有原生结构化输出的模型。</p>
+<p>当前 <code>create_agent(response_format=Schema)</code> 会根据模型能力选择策略。无论哪种策略，都要处理 Schema Validation Error、多个结构化输出、重试上限和业务语义校验。通过了 JSON Schema 不代表字段值在业务上正确。</p>
+<h3 id="语法约束之后仍需要业务校验">语法约束之后仍需要业务校验</h3>
+<p>能使用供应商原生结构化输出时，通常优先使用；其次是 Tool Calling；最后才是从自由文本中解析 JSON/正则。自由文本 Parser 最脆弱，容易受 Markdown、解释文字和截断影响。</p>
+<p>但结构化输出只解决语法与类型约束。日期是否真实、ID 是否存在、金额是否超限仍需确定性业务校验。</p>
+<h3 id="检索组件的离线与在线链路">检索组件的离线与在线链路</h3>
+<p>常见离线链路为 Document Loader → 清洗/解析 → Text Splitter → Embedding → Vector Store；在线链路为 Query 理解 → Retriever/混合搜索 → Rerank/压缩 → Prompt Context → Model → 引用/验证。</p>
+<p>LangChain 的模块化抽象便于替换组件，但不会自动保证 RAG 质量。需要分别评估召回、排序、上下文利用和回答 Groundedness。</p>
+<h3 id="retriever-接口与向量存储">Retriever 接口与向量存储</h3>
+<p>Vector Store 负责保存和按向量搜索数据；Retriever 是“输入非结构化 Query，返回 Document 列表”的更广接口。Retriever 可以由 Vector Store 转换，也可以封装 BM25、企业搜索、Web Search、数据库或组合检索。</p>
+<p>因此“用了 Retriever”不等于“用了向量数据库”，也不等于“检索只有 Semantic Similarity”。</p>
+<h3 id="固定检索agentic-rag-与混合流程">固定检索、Agentic RAG 与混合流程</h3>
+<p><strong>回答：</strong></p>
+<ul>
+<li><strong>2-Step RAG</strong>：固定先检索再生成，延迟和行为容易控制；</li>
+<li><strong>Agentic RAG</strong>：模型决定何时检索、用哪个数据源、是否改写 Query 或重复检索；</li>
+<li><strong>Hybrid RAG</strong>：把确定性检索步骤与 Agent 决策结合，例如先做强制权限过滤和基础召回，再允许 Agent 深挖。</li>
+</ul>
+<p>高风险业务通常不应完全依赖模型“自觉检索”。需要证据的问题可以强制走检索或数据库工具，并在无证据时拒答。</p>
+<h3 id="按文档结构与评估选择分块">按文档结构与评估选择分块</h3>
+<p>Chunk 要足够小以便精确召回，又要足够大以保留回答所需语义。Overlap 可以减少边界截断，但会扩大索引、制造重复召回并增加 Context Token。</p>
+<p>选择应基于文档结构和评测：代码按函数/类，Markdown 按标题，合同按条款，表格保留表头关系。通用文本可从 <code>RecursiveCharacterTextSplitter</code> 起步，再通过 Answer-bearing Chunk Recall、最终回答质量和成本调参。</p>
+<hr>
+<h2 id="技术选型落在实际执行需求上">技术选型落在实际执行需求上</h2>
+<p>当流程包含显式检索、校验、审批、执行和结果落库阶段，审批可能跨请求暂停，失败后又需要从中间恢复时，可以用 LangGraph 表达状态和状态转移，并让 LangChain 提供模型与工具组件。</p>
+<p>如果流程主要是模型与工具循环，现有 SDK 的流式协议、前端集成和团队维护成本可能更适合较薄的运行时。只把图用于表达工作流，与真正实现持久执行、人工中断或复杂分支，是不同的实现深度。架构比较应逐项说明实际能力，不能仅凭概念相似推断运行时具有同样的恢复语义。</p>
+<h2 id="参考资料">参考资料</h2>
+<ul>
+<li><a href="https://docs.langchain.com/oss/python/langchain/agents" target="_blank" rel="noopener noreferrer">LangChain Agents</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/tools" target="_blank" rel="noopener noreferrer">LangChain Tools</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/middleware/overview" target="_blank" rel="noopener noreferrer">LangChain Middleware</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/structured-output" target="_blank" rel="noopener noreferrer">LangChain Structured Output</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/retrieval" target="_blank" rel="noopener noreferrer">LangChain Retrieval</a></li>
+<li><a href="https://reference.langchain.com/python/langchain-core/runnables" target="_blank" rel="noopener noreferrer">LangChain Core Runnables Reference</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api" target="_blank" rel="noopener noreferrer">LangGraph Graph API</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/persistence" target="_blank" rel="noopener noreferrer">LangGraph Persistence</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/interrupts" target="_blank" rel="noopener noreferrer">LangGraph Interrupts</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/add-memory" target="_blank" rel="noopener noreferrer">LangGraph Memory</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/streaming" target="_blank" rel="noopener noreferrer">LangGraph Streaming</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/functional-api" target="_blank" rel="noopener noreferrer">LangGraph Functional API / Durable Execution</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-subgraphs" target="_blank" rel="noopener noreferrer">LangGraph Subgraphs</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel" target="_blank" rel="noopener noreferrer">LangGraph Time Travel</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/observability" target="_blank" rel="noopener noreferrer">LangSmith Observability</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/test/evals" target="_blank" rel="noopener noreferrer">LangSmith Agent Evaluation</a></li>
+</ul></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#agent">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/agent/tool-calling"><small>← 上一篇</small><span>工具调用：模型意图、执行权限与系统评估</span></a><a href="/blog/agent/langgraph"><small>下一篇 →</small><span>LangGraph：状态、恢复与长流程的执行语义</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#先确定抽象解决的问题">先确定抽象解决的问题</a></li><li><a href="#工作流与-agent-的执行方式">工作流与 Agent 的执行方式</a></li><li><a href="#组合并发与交付方式">组合、并发与交付方式</a></li><li><a href="#提示消息与上下文">提示、消息与上下文</a></li><li><a href="#工具与运行时扩展">工具与运行时扩展</a></li><li><a href="#结构化结果与检索组件">结构化结果与检索组件</a></li><li><a href="#技术选型落在实际执行需求上">技术选型落在实际执行需求上</a></li><li><a href="#参考资料">参考资料</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

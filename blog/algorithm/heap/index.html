@@ -1,0 +1,67 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>堆与动态中位数：维护两半的交界 · 韦君豪</title><meta name="description" content="从动态候选的最小值与最大值需求出发，解释优先队列和双堆中位数，重点维护两半数据的大小关系与数量平衡。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/algorithm/heap/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/heap/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/heap/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/heap/"><meta property="og:title" content="堆与动态中位数：维护两半的交界 · 韦君豪"><meta property="og:description" content="从动态候选的最小值与最大值需求出发，解释优先队列和双堆中位数，重点维护两半数据的大小关系与数量平衡。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/algorithm/heap/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/heap" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/algorithm/heap" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/heap" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#algorithm">算法</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学习笔记</p><h1>堆与动态中位数：维护两半的交界</h1><p class="article-description">从动态候选的最小值与最大值需求出发，解释优先队列和双堆中位数，重点维护两半数据的大小关系与数量平衡。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 3 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="用两半数据的边界维护中位数">用两半数据的边界维护中位数</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/62adc17798cb9179ba30.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="堆与动态中位数：维护两半的交界: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/62adc17798cb9179ba30.svg" alt="堆与动态中位数：维护两半的交界: 机制示意图" width="468" height="661" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart LR
+ A["新元素"] --> B["按大小关系放入一侧"]
+ B --> L["较小一半：最大堆"]
+ B --> R["较大一半：最小堆"]
+ L &#x3C;--> S["重新平衡数量"]
+ S &#x3C;--> R
+ L --> M["奇数取较多侧堆顶；偶数取两堆顶均值"]
+ R --> M
+</code></pre></details></div>
+<p>两个堆分别维护较小一半的最大值和较大一半的最小值。除了数量差不超过一，还要始终保证左侧元素不大于右侧元素。</p>
+<h2 id="先识别问题的结构">先识别问题的结构</h2>
+<p>当候选不断加入或移除，并且每次只需要当前最小／最大元素时，堆能避免反复完整排序。若需要动态中位数，则把数据分成较小、较大两半，分别用堆维护两半交界处的元素。堆只保证堆顶最优，内部数组并不整体有序。</p>
+<h2 id="核心思路">核心思路</h2>
+<p>堆适合反复取得当前最小值或最大值。Python 的 <code>heapq</code> 是小顶堆；需要大顶堆时存负数。</p>
+<h2 id="教学骨架">教学骨架</h2>
+<p>普通优先队列先定义“优先级”，再反复取堆顶。下面是伪代码，“处理候选”等步骤需按题意补全；存储状态对象时可保存 <code>(priority, unique_id, state)</code>，用唯一编号避免相同优先级时比较不可排序的状态对象。</p>
+<pre><code class="language-text">把初始候选按优先级放入堆
+while 堆非空:
+    取出当前优先级最优的候选
+    若采用了保留旧条目的更新策略，先检查它是否过期
+    处理候选；若产生新候选，按优先级入堆
+</code></pre>
+<p>双堆中位数单独维护两个不变量：较小半边的所有值 ≤ 较大半边的所有值；较小半边的数量等于另一边或多一个。</p>
+<pre><code class="language-text">插入 x:
+    x 先进入较小半边的大顶堆
+    把大顶堆最大值移到较大半边的小顶堆，恢复两边大小关系
+    若小顶堆数量更多，把其最小值移回大顶堆
+查询中位数（至少已有一个数）:
+    数量为奇数：取大顶堆堆顶
+    数量为偶数：取两堆堆顶的平均值
+</code></pre>
+<h2 id="例题数据流的中位数困难">例题：数据流的中位数（困难）</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/find-median-from-data-stream/" target="_blank" rel="noopener noreferrer">LeetCode 295. 数据流的中位数</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">import</span> heapq
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">MedianFinder</span>:
+    <span class="hljs-comment"># 维护一个最小堆和一个最大堆，保证，最大堆的所有值比最小堆的小且两边堆数量不差超过1，那pop出来的就是中位数</span>
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self</span>):
+        <span class="hljs-variable language_">self</span>.min_heap = []
+        heapq.heapify(<span class="hljs-variable language_">self</span>.min_heap)
+        <span class="hljs-variable language_">self</span>.max_heap = []
+        heapq.heapify(<span class="hljs-variable language_">self</span>.max_heap)
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">addNum</span>(<span class="hljs-params">self, num: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-literal">None</span>:
+        heapq.heappush(<span class="hljs-variable language_">self</span>.max_heap, -num) <span class="hljs-comment"># 先放到大顶堆 - 可以保证大顶堆一定不少于小顶堆，方便维护</span>
+        <span class="hljs-comment"># 数字丢到小顶堆，保证大顶所有数都比小顶小</span>
+        heapq.heappush(<span class="hljs-variable language_">self</span>.min_heap, -heapq.heappop(<span class="hljs-variable language_">self</span>.max_heap))
+        <span class="hljs-comment"># 平衡数量</span>
+        <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.min_heap) > <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.max_heap):
+            heapq.heappush(<span class="hljs-variable language_">self</span>.max_heap, -heapq.heappop(<span class="hljs-variable language_">self</span>.min_heap))
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findMedian</span>(<span class="hljs-params">self</span>) -> <span class="hljs-built_in">float</span>:
+        <span class="hljs-comment"># 奇数 则max_heap多一个</span>
+        <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.max_heap) > <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.min_heap):
+            <span class="hljs-keyword">return</span> -<span class="hljs-variable language_">self</span>.max_heap[<span class="hljs-number">0</span>]
+        
+        <span class="hljs-comment"># 偶数 则每个堆一个</span>
+        <span class="hljs-keyword">return</span> (-<span class="hljs-variable language_">self</span>.max_heap[<span class="hljs-number">0</span>] + <span class="hljs-variable language_">self</span>.min_heap[<span class="hljs-number">0</span>]) / <span class="hljs-number">2</span>
+
+
+<span class="hljs-comment"># Your MedianFinder object will be instantiated and called as such:</span>
+<span class="hljs-comment"># obj = MedianFinder()</span>
+<span class="hljs-comment"># obj.addNum(num)</span>
+<span class="hljs-comment"># param_2 = obj.findMedian()</span>
+</code></pre>
+<p><strong>题目思路</strong>：大顶堆保存较小的一半，小顶堆保存较大的一半，并维持两个不变量：大顶堆所有值不大于小顶堆所有值；大顶堆数量等于小顶堆或多一个。插入时先经过两个堆完成排序，再做数量平衡。奇数个元素取大顶堆堆顶，偶数个元素取两个堆顶平均值。</p></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#algorithm">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/algorithm/greedy"><small>← 上一篇</small><span>贪心：为什么可以在最早合法处切分</span></a><a href="/blog/algorithm/lexicographical-order"><small>下一篇 →</small><span>字典序与下一个排列：让序列只增大一点</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#用两半数据的边界维护中位数">用两半数据的边界维护中位数</a></li><li><a href="#先识别问题的结构">先识别问题的结构</a></li><li><a href="#核心思路">核心思路</a></li><li><a href="#教学骨架">教学骨架</a></li><li><a href="#例题数据流的中位数困难">例题：数据流的中位数（困难）</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

@@ -1,0 +1,115 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>累積和：必要な過去の状態を探す · 韋 君豪</title><meta name="description" content="## 右端を固定し、過去の累積値を探す"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/prefix-sum/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/prefix-sum/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/prefix-sum/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/prefix-sum/"><meta property="og:title" content="累積和：必要な過去の状態を探す · 韋 君豪"><meta property="og:description" content="## 右端を固定し、過去の累積値を探す"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/prefix-sum/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/prefix-sum" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/prefix-sum" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/prefix-sum" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>累積和：必要な過去の状態を探す</h1><p class="article-description">## 右端を固定し、過去の累積値を探す</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 4 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="固定右端点后查找一个历史前缀">右端を固定し、過去の累積値を探す</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/e95b60e105442452d0af.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="累積和：必要な過去の状態を探す: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/e95b60e105442452d0af.svg" alt="累積和：必要な過去の状態を探す: 仕組みの図（原文のラベル）" width="532" height="794" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ I["初始化：历史计数 count[0] = 1"] --> Q{"还有元素？"}
+ Q -->|否| Z["返回答案"]
+ Q -->|是| A["读入下一个元素，更新前缀和 S"]
+ A --> B["查询历史 S-k 的出现次数"]
+ B --> C["把次数累加到答案"]
+ C --> D["最后再记录当前 S"]
+ D --> Q
+</code></pre></details></div>
+<p>区間和は二つの累積和の差です。現在の累積和を記録する前に照会すれば、自分自身との組を除外できます。初期値として累積和 <code>0</code> を一回数えるのは、配列先頭から始まる区間のためです。</p>
+<h2 id="问题结构与状态设计">問題の構造と状態設計</h2>
+<p>連続区間の和を繰り返し求める場合や、和の条件を満たす部分配列を数える場合に累積和を考えます。<code>P[i]</code> を先頭 <code>i</code> 要素の和、<code>P[0] = 0</code> とすると、半開区間 <code>[l, r)</code> の和は <code>P[r] - P[l]</code> です。負の値があっても成り立ちます。</p>
+<table>
+<thead>
+<tr>
+<th>目的</th>
+<th>根拠</th>
+<th>保存する過去の状態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>和がKの部分配列数</td>
+<td><code>P[r] - P[l] = K</code> より、過去の <code>P[r] - K</code> を探す</td>
+<td>各累積和の出現回数</td>
+</tr>
+<tr>
+<td>最大部分配列和</td>
+<td>右端を固定し、最小の過去の累積和を引く</td>
+<td>最小累積和</td>
+</tr>
+<tr>
+<td>自分以外の全要素の積</td>
+<td><code>i</code> を除くと左右二つの区間に分かれる</td>
+<td>自身を含まない接頭・接尾の積</td>
+</tr>
+</tbody>
+</table>
+<p>最初の二つでは、過去の値から解を計算してから現在の値を追加し、空区間を除きます。三つ目は累積積であり、累積和の引き算は使いません。除算も不要なので0を扱えます。</p>
+<h2 id="教学骨架">学習用の骨格</h2>
+<p>中国語の説明と数学的な区間表記は問題に合わせて実装します。最大部分配列和は空でない入力を前提とします。</p>
+<pre><code class="language-text">统计和为 K 的非空子数组：
+    prefix = 0，count = {0: 1}，ans = 0
+    for x in nums：
+        prefix += x
+        ans += count.get(prefix-K, 0)
+        count[prefix] = count.get(prefix, 0) + 1
+
+求非空子数组最大和：
+    prefix = 0，min_prefix = 0，ans = -∞
+    for x in nums：
+        prefix += x
+        ans = max(ans, prefix-min_prefix)
+        min_prefix = min(min_prefix, prefix)
+
+排除自身的乘积：
+    n = len(nums)，left 和 right 均初始化为 n 个 1
+    从左往右：left[i] = left[i-1] * nums[i-1]（i 从 1 开始）
+    从右往左：right[i] = right[i+1] * nums[i+1]（i 从 n-2 开始）
+    ans[i] = left[i] * right[i]
+</code></pre>
+<h2 id="例题一和为-k-的子数组">例1：和がKの部分配列</h2>
+<p>問題：<a href="https://leetcode.cn/problems/subarray-sum-equals-k/" target="_blank" rel="noopener noreferrer">LeetCode 560</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">subarraySum</span>(<span class="hljs-params">self, nums, k</span>):
+        <span class="hljs-comment"># 从左到右扫描，维护当前前缀和 prefix，同时用 count 记录“之前每个前缀和出现过几次”。</span>
+        ans = <span class="hljs-number">0</span>
+        prefix = <span class="hljs-number">0</span>
+        count = {<span class="hljs-number">0</span>: <span class="hljs-number">1</span>}
+
+        <span class="hljs-keyword">for</span> num <span class="hljs-keyword">in</span> nums:
+            prefix += num
+
+            <span class="hljs-keyword">if</span> prefix - k <span class="hljs-keyword">in</span> count:
+                ans += count[prefix - k]
+
+            count[prefix] = count.get(prefix, <span class="hljs-number">0</span>) + <span class="hljs-number">1</span>
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>実装のポイント：</strong> 現在の累積和が <code>prefix</code> なら、過去の <code>prefix - k</code> の各出現が和 <code>k</code> の部分配列を作ります。<code>{0: 1}</code> で先頭から始まる区間も数えられます。</p>
+<h2 id="例题二最大子数组和">例2：最大部分配列和</h2>
+<p>問題：<a href="https://leetcode.cn/problems/maximum-subarray/" target="_blank" rel="noopener noreferrer">LeetCode 53</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">maxSubArray</span>(<span class="hljs-params">self, nums: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        max_s = -<span class="hljs-number">10000</span>
+        min_prefix = <span class="hljs-number">0</span>
+        sum_s = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">for</span> num <span class="hljs-keyword">in</span> nums:
+            sum_s += num <span class="hljs-comment"># 统计所有</span>
+            max_s = <span class="hljs-built_in">max</span>(max_s, sum_s - min_prefix, sum_s)
+            min_prefix  = <span class="hljs-built_in">min</span>(min_prefix, sum_s)
+
+        <span class="hljs-keyword">return</span> max_s
+</code></pre>
+<p><strong>実装のポイント：</strong> 現在位置で終わる最大和は、現在の累積和から過去の最小累積和を引いた値です。<code>min_prefix</code> は答えの計算後に更新し、現在の累積和自身を始点として使わないようにします。</p>
+<h2 id="例题三除了自身以外数组的乘积">例3：自分以外の要素の積</h2>
+<p>問題：<a href="https://leetcode.cn/problems/product-of-array-except-self/" target="_blank" rel="noopener noreferrer">LeetCode 238</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">productExceptSelf</span>(<span class="hljs-params">self, nums: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]:
+        prefix, suffix = [<span class="hljs-number">1</span>] * <span class="hljs-built_in">len</span>(nums), [<span class="hljs-number">1</span>] * <span class="hljs-built_in">len</span>(nums)
+        res = [<span class="hljs-number">0</span>] * <span class="hljs-built_in">len</span>(nums)
+        <span class="hljs-comment"># prefix[0], suffix[-1] = nums[0], nums[-1]</span>
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(nums)):
+            prefix[i] = nums[i - <span class="hljs-number">1</span>] * prefix[i - <span class="hljs-number">1</span>]
+        <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">2</span>, -<span class="hljs-number">1</span>, -<span class="hljs-number">1</span>):
+            suffix[j] = nums[j + <span class="hljs-number">1</span>] * suffix[j + <span class="hljs-number">1</span>]
+
+        <span class="hljs-keyword">for</span> k <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(nums)):
+            res[k] = prefix[k] * suffix[k]
+        <span class="hljs-keyword">return</span> res
+</code></pre>
+<p><strong>実装のポイント：</strong> <code>prefix[i]</code> は <code>i</code> より左の積、<code>suffix[i]</code> は右の積です。両者を掛ければ自然に <code>nums[i]</code> だけを除外できます。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/monotonic-stack"><small>← 前の記事</small><span>単調スタック：現在の要素で過去の候補を確定する</span></a><a href="/ja/blog/algorithm/sliding-window"><small>次の記事 →</small><span>スライディングウィンドウ：拡張・縮小と不変条件</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#固定右端点后查找一个历史前缀">右端を固定し、過去の累積値を探す</a></li><li><a href="#问题结构与状态设计">問題の構造と状態設計</a></li><li><a href="#教学骨架">学習用の骨格</a></li><li><a href="#例题一和为-k-的子数组">例1：和がKの部分配列</a></li><li><a href="#例题二最大子数组和">例2：最大部分配列和</a></li><li><a href="#例题三除了自身以外数组的乘积">例3：自分以外の要素の積</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

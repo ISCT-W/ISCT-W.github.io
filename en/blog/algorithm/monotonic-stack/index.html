@@ -1,0 +1,112 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Monotonic stacks: resolve earlier candidates with the current element · Junhao Wei</title><meta name="description" content="## The current element resolves earlier candidates"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/monotonic-stack/"><meta property="og:title" content="Monotonic stacks: resolve earlier candidates with the current element · Junhao Wei"><meta property="og:description" content="## The current element resolves earlier candidates"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/algorithm/monotonic-stack/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/monotonic-stack" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/monotonic-stack" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/algorithm/monotonic-stack" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#algorithm">Algorithms</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / Study notes</p><h1>Monotonic stacks: resolve earlier candidates with the current element</h1><p class="article-description">## The current element resolves earlier candidates</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 4 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="当前元素让历史候选得到答案">The current element resolves earlier candidates</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/e4b98dbe75083167fff8.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="Monotonic stacks: resolve earlier candidates with the current element: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/e4b98dbe75083167fff8.svg" alt="Monotonic stacks: resolve earlier candidates with the current element: mechanism diagram (original labels)" width="465" height="554" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart LR
+ A["新的温度 T[i]"] --> B{"比栈顶温度高？"}
+ B -->|是| C["弹出下标 j，答案为 i-j"]
+ C --> B
+ B -->|否或栈空| D["把 i 入栈"]
+ D --> E["等待下一个元素"]
+</code></pre></details></div>
+<p>In Daily Temperatures, the stack holds indices still waiting for a warmer day. Each index is pushed and popped at most once, so the total work is linear.</p>
+<h2 id="先识别问题的结构">Recognize the structure first</h2>
+<ul>
+<li>Consider a monotonic stack for the first greater or smaller element on either side of every position, or for widths and areas determined by those boundaries.</li>
+<li>Before popping, ask whether the current element determines the top’s answer or makes that candidate unnecessary. A warmer day resolves the next-greater query; a shorter bar stops a rectangle from extending rightward.</li>
+<li>The stack usually stores unresolved indices. Indices stay ordered, while their values are monotone in the required direction. At most one push and pop per index gives <code>O(n)</code> total time.</li>
+<li>Comparisons depend on whether “greater” or “smaller” is strict. Equal elements must be handled consistently with the boundary definition. The temperature and water examples retain equals in a nonincreasing stack; the rectangle example retains equals in a nondecreasing stack.</li>
+</ul>
+<h2 id="核心思路">Core idea</h2>
+<p>Maintain increasing or decreasing values. Whenever a new value breaks the required order, keep popping and calculate answers for the removed entries.</p>
+<p>The teaching pseudocode retains Chinese placeholders for the condition and answer calculation.</p>
+<pre><code class="hljs language-python"><span class="hljs-string">"""
+单调栈通用模版：
+1. 栈中通常保存下标，方便同时获得元素值、距离和区间宽度
+2. 遍历每个元素
+3. 当前元素破坏单调性时，不断弹栈并结算答案
+4. 当前下标入栈
+5. 必要时用哨兵处理栈内剩余元素
+"""</span>
+
+stack = []
+<span class="hljs-keyword">for</span> i, value <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(nums):
+    <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> 当前元素破坏单调性:
+        j = stack.pop()
+        根据 i、j 和新的栈顶计算答案
+    stack.append(i)
+</code></pre>
+<h2 id="例题一每日温度下一个更高温度">Example 1: Daily Temperatures</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/daily-temperatures/" target="_blank" rel="noopener noreferrer">LeetCode 739</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">dailyTemperatures</span>(<span class="hljs-params">self, temperatures: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]:
+        ans = [<span class="hljs-number">0</span>] * <span class="hljs-built_in">len</span>(temperatures)
+        stack = []  <span class="hljs-comment"># 尚未找到更高温度的下标；对应温度单调递减</span>
+
+        <span class="hljs-keyword">for</span> i, temperature <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(temperatures):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> temperature > temperatures[stack[-<span class="hljs-number">1</span>]]:
+                j = stack.pop()
+                ans[j] = i - j
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>Reasoning:</strong> The stack contains unresolved days. A warmer current day is the first warmer day for each popped index <code>j</code>; the wait is <code>i - j</code>.</p>
+<h2 id="例题二接雨水">Example 2: Trapping Rain Water</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/trapping-rain-water/" target="_blank" rel="noopener noreferrer">LeetCode 42</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">trap</span>(<span class="hljs-params">self, height: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        ans = <span class="hljs-number">0</span>
+        stack = []  <span class="hljs-comment"># 下标对应的高度单调递减</span>
+
+        <span class="hljs-keyword">for</span> i, current_height <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(height):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> current_height > height[stack[-<span class="hljs-number">1</span>]]:
+                bottom = stack.pop()
+                <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> stack:
+                    <span class="hljs-keyword">break</span>
+
+                left = stack[-<span class="hljs-number">1</span>]
+                width = i - left - <span class="hljs-number">1</span>
+                bounded_height = <span class="hljs-built_in">min</span>(height[left], current_height) - height[bottom]
+                ans += width * bounded_height
+
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>Reasoning:</strong> The popped bar is a basin floor. The new stack top and current bar form its left and right boundaries. Water in this layer is <code>width × effective height</code>.</p>
+<h2 id="例题三最大矩形矩阵版">Example 3: Maximal Rectangle in a matrix</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/maximal-rectangle/" target="_blank" rel="noopener noreferrer">LeetCode 85</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">maximalRectangle</span>(<span class="hljs-params">self, matrix: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> matrix:
+            <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+
+        heights = [<span class="hljs-number">0</span>] * <span class="hljs-built_in">len</span>(matrix[<span class="hljs-number">0</span>])
+        ans = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">for</span> row <span class="hljs-keyword">in</span> matrix:
+            <span class="hljs-keyword">for</span> i, value <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(row):
+                heights[i] = heights[i] + <span class="hljs-number">1</span> <span class="hljs-keyword">if</span> value == <span class="hljs-string">'1'</span> <span class="hljs-keyword">else</span> <span class="hljs-number">0</span>
+            ans = <span class="hljs-built_in">max</span>(ans, <span class="hljs-variable language_">self</span>.largestRectangleArea(heights))
+
+        <span class="hljs-keyword">return</span> ans
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">largestRectangleArea</span>(<span class="hljs-params">self, heights: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        heights = [<span class="hljs-number">0</span>] + heights + [<span class="hljs-number">0</span>]  <span class="hljs-comment"># 两侧哨兵</span>
+        stack = []  <span class="hljs-comment"># 下标对应的高度单调递增</span>
+        ans = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">for</span> i, current_height <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(heights):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> current_height &#x3C; heights[stack[-<span class="hljs-number">1</span>]]:
+                height = heights[stack.pop()]
+                width = i - stack[-<span class="hljs-number">1</span>] - <span class="hljs-number">1</span>
+                ans = <span class="hljs-built_in">max</span>(ans, height * width)
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>Reasoning:</strong> Treat each row as the base of a histogram. <code>heights[i]</code> counts consecutive <code>1</code>s in that column. At a shorter bar, a popped height can extend no further right; the new top and current index define its boundaries.</p>
+<h2 id="三题的共同点">What the three examples share</h2>
+<ul>
+<li><strong>Temperatures:</strong> Popping determines the first greater element to the right.</li>
+<li><strong>Rain water:</strong> Popping settles a basin layer using two boundaries.</li>
+<li><strong>Rectangle:</strong> Convert each row to a histogram; popping establishes the maximum width for that height.</li>
+</ul></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#algorithm">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><a href="/en/blog/algorithm/matrix-simulation"><small>← Previous</small><span>Matrix simulation: shrink the unvisited rectangle</span></a><a href="/en/blog/algorithm/prefix-sum"><small>Next →</small><span>Prefix sums: find the right historical state</span></a></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#当前元素让历史候选得到答案">The current element resolves earlier candidates</a></li><li><a href="#先识别问题的结构">Recognize the structure first</a></li><li><a href="#核心思路">Core idea</a></li><li><a href="#例题一每日温度下一个更高温度">Example 1: Daily Temperatures</a></li><li><a href="#例题二接雨水">Example 2: Trapping Rain Water</a></li><li><a href="#例题三最大矩形矩阵版">Example 3: Maximal Rectangle in a matrix</a></li><li><a href="#三题的共同点">What the three examples share</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

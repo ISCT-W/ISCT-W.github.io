@@ -1,0 +1,250 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Linked lists: preserve the next node before rewiring · Junhao Wei</title><meta name="description" content="## Save the unprocessed part before reversing"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/algorithm/linked-list/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/linked-list/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/linked-list/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/linked-list/"><meta property="og:title" content="Linked lists: preserve the next node before rewiring · Junhao Wei"><meta property="og:description" content="## Save the unprocessed part before reversing"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/algorithm/linked-list/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/linked-list" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/linked-list" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/algorithm/linked-list" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#algorithm">Algorithms</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / Study notes</p><h1>Linked lists: preserve the next node before rewiring</h1><p class="article-description">## Save the unprocessed part before reversing</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 7 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="反转链表时先保存还没有处理的部分">Save the unprocessed part before reversing</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/b31b06bb03d4802c540b.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="Linked lists: preserve the next node before rewiring: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/b31b06bb03d4802c540b.svg" alt="Linked lists: preserve the next node before rewiring: mechanism diagram (original labels)" width="642" height="683" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart TD
+ A["prev = 空，curr = 原链表头"] --> B{"curr 非空？"}
+ B -->|否| Z["返回 prev：反转后的头"]
+ B -->|是| C["先保存 nxt = curr.next"]
+ C --> D["令 curr.next 指向 prev"]
+ D --> E["prev 移到 curr，curr 移到 nxt"]
+ E --> B
+</code></pre></details></div>
+<p>Save the original successor before changing a pointer so that the remaining list is not lost. After each iteration, <code>prev</code> points to the completed part and <code>curr</code> to the unprocessed part.</p>
+<h2 id="先识别问题的结构">Recognize the structure first</h2>
+<table>
+<thead>
+<tr>
+<th>Goal</th>
+<th>Approach and justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Reverse, delete, or rearrange nodes</td>
+<td>Rewire local <code>next</code> pointers after saving the unprocessed successor</td>
+</tr>
+<tr>
+<td>Detect a cycle or find its entry</td>
+<td>Different pointer speeds cause a meeting inside a cycle; without a cycle, the fast pointer reaches null</td>
+</tr>
+<tr>
+<td>Reverse groups of K</td>
+<td>Split into a complete group and the remaining list; verify K nodes, reverse, and attach the recursive result</td>
+</tr>
+<tr>
+<td>LRU lookup and recency changes in <code>O(1)</code></td>
+<td>A hash table locates nodes; a doubly linked list removes/inserts known nodes in constant time. A singly linked list cannot directly find a predecessor</td>
+</tr>
+</tbody>
+</table>
+<h2 id="把状态和不变量想清楚">Define the state and invariant</h2>
+<ul>
+<li>Draw the pointer changes first. Check that the successor is saved before breaking a link.</li>
+<li>Consider a dummy head when the head may change, and fast/slow pointers for cycles or midpoints.</li>
+<li>For recursive list processing, define the contract: which range is accepted, which endpoints are returned, and who connects the next segment.</li>
+</ul>
+<h2 id="教学骨架">Teaching skeletons</h2>
+<p>The following pseudocode covers separate patterns. Fill in the original Chinese placeholders for each problem; do not combine them into one generic pointer loop.</p>
+<pre><code class="language-text">迭代反转：
+    pre = None，cur = head
+    while cur 非空：
+        next_node = cur.next       # 保存未处理部分
+        cur.next = pre             # 接入已反转部分
+        pre = cur，cur = next_node
+    return pre
+
+本篇递归反转 rev(cur, pre)：
+    if cur 为空：return pre
+    new_head = rev(cur.next, cur)
+    cur.next = pre                 # 回溯时连向原前驱
+    return new_head
+
+环入口：
+    slow = fast = head
+    while fast 和 fast.next 非空：
+        slow 前进一步，fast 前进两步
+        若相遇：一个指针回到 head，两者同步前进一步直到相遇，返回该节点
+    return None
+
+K 个一组翻转：
+    从 head 找满 K 个节点；不足则 return head
+    保存 next_group，翻转本组，得到 new_head 和 new_tail
+    new_tail.next = 递归处理(next_group, K)
+    return new_head
+
+LRU：
+    初始化 key→节点 的字典及双向链表头尾哨兵
+    get：未命中返回 -1；命中则移到最前并返回值
+    put：已有键更新并移到最前；新键加入字典和链表最前
+         若超容量，同时删除链表最后的实际节点及其字典条目
+</code></pre>
+<p>During iterative reversal, <code>pre</code> points to the processed part and <code>cur</code> to the remaining part. The recursive version changes directions while unwinding. LRU maintains the same actual nodes in its dictionary and list, with the most recently used node at the front and the least recent at the back.</p>
+<h2 id="例题一反转链表">Example 1: Reverse Linked List</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/reverse-linked-list/" target="_blank" rel="noopener noreferrer">LeetCode 206</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, next=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.next = next</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverseList</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode]</span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        <span class="hljs-comment"># pre = None</span>
+        <span class="hljs-comment"># cur = head</span>
+        <span class="hljs-comment"># while cur:</span>
+        <span class="hljs-comment">#     tmp = cur.next</span>
+        <span class="hljs-comment">#     cur.next = pre</span>
+        <span class="hljs-comment">#     pre = cur</span>
+        <span class="hljs-comment">#     cur = tmp</span>
+        <span class="hljs-comment"># return pre</span>
+        
+        pre = <span class="hljs-literal">None</span>
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">rev</span>(<span class="hljs-params">cur, pre</span>):
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> cur: <span class="hljs-keyword">return</span> pre
+            res = rev(cur.<span class="hljs-built_in">next</span>, cur)
+            cur.<span class="hljs-built_in">next</span> = pre
+            <span class="hljs-keyword">return</span> res
+        revd = rev(head, pre)
+        <span class="hljs-keyword">return</span> revd
+</code></pre>
+<p><strong>Implementation:</strong> The commented version is iterative; the active version is recursive. <code>rev(cur, pre)</code> reverses the list starting at <code>cur</code> and ultimately makes <code>cur</code> point to <code>pre</code>. Recursion carries the new predecessor forward, then assigns <code>cur.next = pre</code> while unwinding.</p>
+<p><strong>Example:</strong> Call <code>rev(1, None)</code> for <code>1 -> 2 -> 3 -> None</code>:</p>
+<pre><code class="language-text">rev(1, None)
+  -> rev(2, 1)
+       -> rev(3, 2)
+            -> rev(None, 3)，返回节点 3
+</code></pre>
+<p>Unwinding sets <code>3.next = 2</code>, <code>2.next = 1</code>, and <code>1.next = None</code>, then returns the new head <code>3</code>.</p>
+<h2 id="例题二环形链表-ii">Example 2: Linked List Cycle II</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/linked-list-cycle-ii/" target="_blank" rel="noopener noreferrer">LeetCode 142</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, x):</span>
+<span class="hljs-comment">#         self.val = x</span>
+<span class="hljs-comment">#         self.next = None</span>
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">detectCycle</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode]</span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        s, l = head, head
+
+        <span class="hljs-keyword">while</span> <span class="hljs-literal">True</span>:
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> l <span class="hljs-keyword">or</span> <span class="hljs-keyword">not</span> l.<span class="hljs-built_in">next</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">None</span>
+            s = s.<span class="hljs-built_in">next</span>
+            l = l.<span class="hljs-built_in">next</span>.<span class="hljs-built_in">next</span>
+            <span class="hljs-keyword">if</span> s == l: <span class="hljs-keyword">break</span>
+        l = head
+        <span class="hljs-keyword">while</span> l != s:
+            l, s = l.<span class="hljs-built_in">next</span>, s.<span class="hljs-built_in">next</span>
+        <span class="hljs-keyword">return</span> l
+</code></pre>
+<p><strong>Implementation:</strong> The fast pointer advances twice per step and the slow pointer once. After they meet, reset one to the head and move both one step at a time. Their next meeting is the cycle entry.</p>
+<p><strong>Why it works:</strong> Let <code>a</code> be the distance from the head to the entry, <code>b</code> from entry to first meeting, and <code>c</code> the cycle length. At the meeting, the fast pointer has traveled a whole number of extra cycles. This implies that <code>a</code> differs from the forward distance from meeting to entry by whole cycles, so equal-speed pointers meet at the entry.</p>
+<h2 id="例题三k-个一组翻转链表困难">Example 3: Reverse Nodes in K-Group (hard)</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/reverse-nodes-in-k-group/" target="_blank" rel="noopener noreferrer">LeetCode 25</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, next=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.next = next</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverseKGroup</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode], k: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverse</span>(<span class="hljs-params">head, tail</span>):
+            pre = tail.<span class="hljs-built_in">next</span>
+            cur = head
+            <span class="hljs-keyword">while</span> pre != tail: <span class="hljs-comment"># 关键循环，建议自己画链子 - 先保存旧 next，然后pre接上新next，然后往后 - 其实是链表很通用的过程</span>
+                suc = cur.<span class="hljs-built_in">next</span>
+                cur.<span class="hljs-built_in">next</span> = pre
+                pre = cur
+                cur = suc
+            <span class="hljs-keyword">return</span> tail, head
+
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> head <span class="hljs-keyword">or</span> <span class="hljs-keyword">not</span> head.<span class="hljs-built_in">next</span>: <span class="hljs-keyword">return</span> head
+        tail = head
+        <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(k - <span class="hljs-number">1</span>): <span class="hljs-comment"># 找到当前的tail以进入当前修改</span>
+            tail = tail.<span class="hljs-built_in">next</span>
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> tail: <span class="hljs-keyword">return</span> head
+        suc = tail.<span class="hljs-built_in">next</span> <span class="hljs-comment"># 记录下一组的开头</span>
+        new_head, _  = reverse(head, tail) <span class="hljs-comment"># 反转这一组</span>
+        head.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.reverseKGroup(suc, k) <span class="hljs-comment"># 递归处理剩余部分</span>
+        <span class="hljs-keyword">return</span> new_head
+</code></pre>
+<h3 id="分组与递归到底在做什么">What grouping and recursion do</h3>
+<p>The contract of <code>reverseKGroup(head, k)</code> is to process the entire list starting at <code>head</code> and return its new head.</p>
+<ol>
+<li>Walk <code>k - 1</code> steps to find the current group’s <code>tail</code>. If fewer than <code>k</code> nodes remain, return the list unchanged.</li>
+<li><code>reverse(head, tail)</code> reverses only the closed interval <code>[head, tail]</code> and returns its new head (the old <code>tail</code>) and new tail (the old <code>head</code>).</li>
+<li>Save the next group’s start as <code>suc = tail.next</code> before the original boundary is lost.</li>
+<li>Recursively process the remainder and attach it through <code>head.next = self.reverseKGroup(suc, k)</code> as in the implementation’s endpoint convention.</li>
+</ol>
+<p><strong>Example:</strong> For <code>1 -> 2 -> 3 -> 4 -> 5</code> with <code>k = 2</code>:</p>
+<ul>
+<li>Reverse <code>[1, 2]</code> into <code>2 -> 1</code>, making <code>1</code> the new tail.</li>
+<li>Recursively turn <code>3 -> 4 -> 5</code> into <code>4 -> 3 -> 5</code>.</li>
+<li>Attach the result to <code>1.next</code>, producing <code>2 -> 1 -> 4 -> 3 -> 5</code>.</li>
+</ul>
+<p>Inside <code>reverse</code>, initializing <code>pre = tail.next</code> temporarily connects the group’s old head to the next segment. The head returned by the recursive call later replaces that connection.</p>
+<h2 id="例题四lru-缓存">Example 4: LRU Cache</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/lru-cache/" target="_blank" rel="noopener noreferrer">LeetCode 146</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Node</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, key=<span class="hljs-number">0</span>, value=<span class="hljs-number">0</span></span>): <span class="hljs-comment"># 按照使用顺序排序</span>
+        <span class="hljs-variable language_">self</span>.key = key
+        <span class="hljs-variable language_">self</span>.value = value
+        <span class="hljs-variable language_">self</span>.prev = <span class="hljs-literal">None</span>
+        <span class="hljs-variable language_">self</span>.<span class="hljs-built_in">next</span> = <span class="hljs-literal">None</span>
+
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">LRUCache</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, capacity: <span class="hljs-built_in">int</span></span>):
+        <span class="hljs-variable language_">self</span>.capacity = capacity
+        <span class="hljs-variable language_">self</span>.cache = {} <span class="hljs-comment"># O(1)查找</span>
+
+        <span class="hljs-variable language_">self</span>.head = Node()
+        <span class="hljs-variable language_">self</span>.tail = Node()
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.tail
+        <span class="hljs-variable language_">self</span>.tail.prev = <span class="hljs-variable language_">self</span>.head
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">_remove</span>(<span class="hljs-params">self, node</span>):
+        node.prev.<span class="hljs-built_in">next</span> = node.<span class="hljs-built_in">next</span>
+        node.<span class="hljs-built_in">next</span>.prev = node.prev
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">_add_front</span>(<span class="hljs-params">self, node</span>):
+        node.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span>
+        node.prev = <span class="hljs-variable language_">self</span>.head
+
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span>.prev = node
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span> = node
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">get</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-keyword">if</span> key <span class="hljs-keyword">not</span> <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.cache: <span class="hljs-keyword">return</span> -<span class="hljs-number">1</span>
+        
+        node = <span class="hljs-variable language_">self</span>.cache.get(key)
+
+        <span class="hljs-comment"># 刚访问放在一开始</span>
+        <span class="hljs-variable language_">self</span>._remove(node)
+        <span class="hljs-variable language_">self</span>._add_front(node)
+        <span class="hljs-keyword">return</span> node.value
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">put</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">int</span>, value: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-literal">None</span>:
+        <span class="hljs-comment"># 1. 已经有只需要更新；</span>
+        <span class="hljs-keyword">if</span> key <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.cache:
+            node = <span class="hljs-variable language_">self</span>.cache.get(key)
+            node.value = value
+
+            <span class="hljs-comment"># 更新位置到一开始</span>
+            <span class="hljs-variable language_">self</span>._remove(node)
+            <span class="hljs-variable language_">self</span>._add_front(node)
+
+        <span class="hljs-comment"># 2.新加入则新建节点；期间如果超过长度则remove tail.prev</span>
+        <span class="hljs-keyword">else</span>:
+            node = Node(key, value)
+            <span class="hljs-variable language_">self</span>.cache[key] = node
+            <span class="hljs-variable language_">self</span>._add_front(node)
+
+            <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.cache) > <span class="hljs-variable language_">self</span>.capacity:
+                old = <span class="hljs-variable language_">self</span>.tail.prev
+                <span class="hljs-variable language_">self</span>._remove(old)
+                <span class="hljs-keyword">del</span> <span class="hljs-variable language_">self</span>.cache[old.key]
+
+<span class="hljs-comment"># Your LRUCache object will be instantiated and called as such:</span>
+<span class="hljs-comment"># obj = LRUCache(capacity)</span>
+<span class="hljs-comment"># param_1 = obj.get(key)</span>
+<span class="hljs-comment"># obj.put(key,value)</span>
+</code></pre>
+<p><strong>Implementation:</strong> The hash table finds nodes in <code>O(1)</code>; the doubly linked list removes and moves them in <code>O(1)</code>. Nodes near <code>head</code> are recent, while <code>tail.prev</code> is least recently used. Both <code>get</code> and updating an existing key move its node to the front.</p></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#algorithm">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><a href="/en/blog/algorithm/lexicographical-order"><small>← Previous</small><span>Lexicographical order and the next permutation</span></a><a href="/en/blog/algorithm/matrix-simulation"><small>Next →</small><span>Matrix simulation: shrink the unvisited rectangle</span></a></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#反转链表时先保存还没有处理的部分">Save the unprocessed part before reversing</a></li><li><a href="#先识别问题的结构">Recognize the structure first</a></li><li><a href="#把状态和不变量想清楚">Define the state and invariant</a></li><li><a href="#教学骨架">Teaching skeletons</a></li><li><a href="#例题一反转链表">Example 1: Reverse Linked List</a></li><li><a href="#例题二环形链表-ii">Example 2: Linked List Cycle II</a></li><li><a href="#例题三k-个一组翻转链表困难">Example 3: Reverse Nodes in K-Group (hard)</a></li><li><a href="#例题四lru-缓存">Example 4: LRU Cache</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

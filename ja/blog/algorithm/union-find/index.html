@@ -1,0 +1,249 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Union-Find：代表元と直接の親を区別する · 韋 君豪</title><meta name="description" content="## 集合の代表元同士だけをつなぐ"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/union-find/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/union-find/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/union-find/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/union-find/"><meta property="og:title" content="Union-Find：代表元と直接の親を区別する · 韋 君豪"><meta property="og:description" content="## 集合の代表元同士だけをつなぐ"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/union-find/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/union-find" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/union-find" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/union-find" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>Union-Find：代表元と直接の親を区別する</h1><p class="article-description">## 集合の代表元同士だけをつなぐ</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 10 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="只把集合代表连接起来">集合の代表元同士だけをつなぐ</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/29f56be16ee4f5fc63e3.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="Union-Find：代表元と直接の親を区別する: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/29f56be16ee4f5fc63e3.svg" alt="Union-Find：代表元と直接の親を区別する: 仕組みの図（原文のラベル）" width="568" height="503" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart LR
+ A["查询元素 a、b"] --> B["find(a)、find(b)"]
+ B --> C{"根相同？"}
+ C -->|是| D["已经连通，无需合并"]
+ C -->|否| E["连接两个不同的根"]
+ B --> F["查找时压缩路径"]
+</code></pre></details></div>
+<p>集合は根で表します。経路圧縮は所属を変えず検索経路を短くします。ここでは根を直接接続しています。サイズやランクによる併合は別の最適化であり、木が長い鎖に偏ることを防げます。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<ul>
+<li><strong>同じグループか、何グループあるかだけが重要：</strong> 都市の間接的接続、変数の等値、共有メールアドレスなど、関係に推移性があります。</li>
+<li><strong>集合を併合してから所属を調べる：</strong> 併合後に分裂しないため、根を代表元にできます。</li>
+<li><strong>無向辺の追加による閉路判定：</strong> 既につながった二点を結ぶ辺を追加すると閉路になります。</li>
+</ul>
+<p>ノードが何で、どの関係が併合を許すかを先に決めます。通常のUnion-Findは最短経路、有向到達可能性、辺の削除後の分裂を直接解きません。静的な連結成分ならDFSやBFSでも求められます。</p>
+<h2 id="状态设计与核心骨架">状態設計と基本の骨格</h2>
+<ol>
+<li>ノードに番号を付け、最初は自分を親とする独立集合にします。</li>
+<li><code>find(x)</code> で親をたどって根を探します。掲載実装は経路圧縮も行います。</li>
+<li><code>union(x, y)</code> で両根を調べ、異なる場合だけ併合し、同じなら <code>False</code> を返します。</li>
+<li>問題に応じて成功した併合を数え、根を比較し、根ごとに分類します。</li>
+</ol>
+<p><code>26</code> は小文字アルファベットの個数です。他の問題では実際のノード数に合わせ、1始まりの番号なら添字を一つ余分に確保します。</p>
+<pre><code class="hljs language-python">parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">26</span>)]
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+    <span class="hljs-keyword">if</span> parents[x] != x:
+        parents[x] = find(parents[x])
+    <span class="hljs-keyword">return</span> parents[x]
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+    px, py = find(x), find(y)
+    <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+    parents[py] = px
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+</code></pre>
+<p><code>parents[x]</code> は<strong>直接の親</strong>、<code>find(x)</code> は<strong>現在の根・代表元</strong>です。根は <code>parents[root] == root</code> を満たします。併合では二つの根をつなぎ、向きは選べます。代表元が最小番号や最初のノードである保証はありません。</p>
+<h2 id="重点为什么不能直接用-lensetparents">なぜ <code>len(set(parents))</code> では数えられないのか</h2>
+<p>所属は親ポインタの鎖全体で表されます。<strong>併合済みの同じ集合でも、直接の親は一致するとは限りません。</strong> 併合が未完了なのではなく、直接の親を代表元と取り違えていることが問題です。</p>
+<p><code>union</code> は一つの根の親だけを変更し、子孫全体を走査しません。<code>find(x)</code> は今回たどった経路だけを根に直結し、集合全体を更新するわけではありません。以前圧縮したノードでも、その後に根が併合されれば再度 <code>find</code> が必要になることがあります。</p>
+<p>Number of Provincesの二重ループと同じ順序で例を追います。</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>parents</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>初期化</td>
+<td><code>[0, 1, 2, 3]</code></td>
+<td>四集合</td>
+</tr>
+<tr>
+<td><code>union(0, 3)</code></td>
+<td><code>[0, 1, 2, 0]</code></td>
+<td>3を0へ接続</td>
+</tr>
+<tr>
+<td><code>union(1, 2)</code></td>
+<td><code>[0, 1, 1, 0]</code></td>
+<td>2を1へ接続</td>
+</tr>
+<tr>
+<td><code>union(2, 3)</code></td>
+<td><code>[1, 1, 1, 0]</code></td>
+<td>根0を根1へ接続。ただし3はまだ0を直接指す</td>
+</tr>
+<tr>
+<td><code>find(3)</code></td>
+<td><code>[1, 1, 1, 1]</code></td>
+<td><code>3 → 0 → 1</code> をたどって圧縮</td>
+</tr>
+</tbody>
+</table>
+<p>三回目の併合後は全ノードが連結済みですが、<code>set(parents) == {0, 1}</code> なので二集合と誤って数えてしまいます。</p>
+<p>ノードが <code>0..n-1</code> の場合、正しい数え方は三通りあります。</p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># 方式一：对每个节点查当前根，再去重</span>
+count = <span class="hljs-built_in">len</span>({find(i) <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n)})
+
+<span class="hljs-comment"># 方式二：直接数根；不需要先压缩所有节点</span>
+count = <span class="hljs-built_in">sum</span>(parents[i] == i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n))
+
+<span class="hljs-comment"># 方式三：初始化 count = n，每次 union 返回 True 时 count -= 1</span>
+<span class="hljs-comment"># 见下面 547 的当前代码。</span>
+</code></pre>
+<p><code>len(set(parents))</code> を使うなら、すべての併合後に全ノードへ <code>find</code> を呼び、数えるまで再併合しない必要があります。同じ集合かの判定も <code>parents[x] == parents[y]</code> ではなく <code>find(x) == find(y)</code> を使います。</p>
+<h2 id="例题一547-省份数量">例1：Number of Provinces</h2>
+<p>問題：<a href="https://leetcode.cn/problems/number-of-provinces/" target="_blank" rel="noopener noreferrer">LeetCode 547</a></p>
+<h3 id="我的代码">私のコード</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findCircleNum</span>(<span class="hljs-params">self, isConnected: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-string">"""
+        并查集的经典骨架：
+            parent = list(range(n))
+
+            def find(x): # 一直往上找到parent是自己的节点！
+                if parent[x] != x:
+                    parent[x] = find(parent[x])
+                return parent[x]
+
+            def union(a, b): # 
+                ra = find(a)
+                rb = find(b)
+
+                if ra == rb:
+                    return False
+
+                parent[rb] = ra
+                return True
+        """</span>
+        n = <span class="hljs-built_in">len</span>(isConnected)
+        provinces = n
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n)] <span class="hljs-comment"># 记录各自的parent；初始化为自己</span>
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = px
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n):
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(i + <span class="hljs-number">1</span>, n):
+                <span class="hljs-keyword">if</span> isConnected[i][j] == <span class="hljs-number">1</span>:
+                    <span class="hljs-keyword">if</span> union(i, j):
+                        provinces -= <span class="hljs-number">1</span>
+        
+        <span class="hljs-keyword">return</span> provinces
+</code></pre>
+<p><strong>考え方：</strong> 都市がノードで、行列中の <code>1</code> が併合の根拠です。対称行列なので上三角だけを見ます。異なる二集合を実際に併合したときだけ <code>provinces</code> を減らします。既に連結した二点では減らさないため、最後の全体圧縮は不要です。</p>
+<p><code>[[1,0,0,1],[0,1,1,0],[0,1,1,1],[1,0,1,1]]</code> で上の落とし穴を再現できます。正解は一つで、この個数管理は <code>1</code> を返しますが、親配列の重複除去では <code>2</code> になります。</p>
+<h2 id="例题二684-冗余连接">例2：Redundant Connection</h2>
+<p>問題：<a href="https://leetcode.cn/problems/redundant-connection/" target="_blank" rel="noopener noreferrer">LeetCode 684</a></p>
+<h3 id="我的代码-1">私のコード</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findRedundantConnection</span>(<span class="hljs-params">self, edges: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]:
+        <span class="hljs-comment"># 逻辑就是找到环，然后把成环的最后一条边删了吧？</span>
+        <span class="hljs-comment"># 模拟一遍发现其实就是已经union的东西！</span>
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(edges) + <span class="hljs-number">1</span>)] <span class="hljs-comment"># 从1开始！</span>
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+        
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = parents[px]
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+
+        <span class="hljs-keyword">for</span> i, j <span class="hljs-keyword">in</span> edges:
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> union(i, j):
+                <span class="hljs-keyword">return</span> [i, j]
+</code></pre>
+<p><strong>考え方：</strong> 入力順に無向辺を追加します。<code>union(i, j)</code> が <code>False</code> なら既に経路があり、その辺が閉路を閉じます。「木に一辺追加」という前提から、一意な閉路で最後に現れる辺であり、問題の返却順序を満たします。</p>
+<p><code>[[1,2],[1,3],[2,3]]</code> なら最初の二回が成功し、三辺目で <code>[2,3]</code> を返します。<code>px</code> は根なので、<code>parents[px]</code> は <code>px</code> と同じです。</p>
+<h2 id="例题三990-等式方程的可满足性">例3：等式の充足可能性</h2>
+<p>問題：<a href="https://leetcode.cn/problems/satisfiability-of-equality-equations/" target="_blank" rel="noopener noreferrer">LeetCode 990</a></p>
+<h3 id="我的代码-2">私のコード</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">equationsPossible</span>(<span class="hljs-params">self, equations: <span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]</span>) -> <span class="hljs-built_in">bool</span>:
+        <span class="hljs-comment"># 等于则连上，不等于则不连。判断所有不等的find是否到同一节点</span>
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">26</span>)]
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = px
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+
+        non_equations = []
+        <span class="hljs-keyword">for</span> eq <span class="hljs-keyword">in</span> equations:
+            x, y = eq[<span class="hljs-number">0</span>], eq[<span class="hljs-number">3</span>]
+            <span class="hljs-keyword">if</span> eq[<span class="hljs-number">1</span>] == <span class="hljs-string">'='</span>:
+                union(<span class="hljs-built_in">ord</span>(x)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>), <span class="hljs-built_in">ord</span>(y)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>))
+            <span class="hljs-keyword">else</span>:
+                non_equations.append([x, y])
+        
+        <span class="hljs-keyword">for</span> x, y <span class="hljs-keyword">in</span> non_equations:
+            <span class="hljs-keyword">if</span> find(<span class="hljs-built_in">ord</span>(x)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>)) == find(<span class="hljs-built_in">ord</span>(y)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>)):
+                <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+</code></pre>
+<p><strong>考え方：</strong> 文字をノードとし、すべての等式を併合してから、不等式の両辺が同じ根か調べます。不等関係に推移性はないため、<code>!=</code> を併合には使えません。</p>
+<p>判定は全等式の処理後に行います。<code>["a!=c", "a==b", "b==c"]</code> の最初の式は一見問題なくても、後で <code>a,b,c</code> が同じ集合になるため、最終的には <code>False</code> です。</p>
+<h2 id="例题四721-账户合并">例4：Accounts Merge</h2>
+<p>問題：<a href="https://leetcode.cn/problems/accounts-merge/" target="_blank" rel="noopener noreferrer">LeetCode 721</a></p>
+<h3 id="我的代码-3">私のコード</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">from</span> collections <span class="hljs-keyword">import</span> defaultdict
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">accountsMerge</span>(<span class="hljs-params">self, accounts: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]:
+        <span class="hljs-string">"""
+        思路：用set(a) &#x26; set(b) 非空则是同一个用户，直接union。 - 复杂度很高！
+        """</span>
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(accounts))] <span class="hljs-comment"># 每个人名对应在列表的index</span>
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = px
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+        <span class="hljs-string">"""
+        更好的思路：直接遍历邮箱，第一次出现就放在当前index，不是则进行名字的union！
+        """</span>
+        email_2_account = {}
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(parents)):
+            <span class="hljs-keyword">for</span> email <span class="hljs-keyword">in</span> accounts[i][<span class="hljs-number">1</span>:]:
+                <span class="hljs-keyword">if</span> email <span class="hljs-keyword">in</span> email_2_account: <span class="hljs-comment"># 之前出现过，说明这个account属于之前的人</span>
+                    union(i, email_2_account[email])
+                <span class="hljs-keyword">else</span>:
+                    email_2_account[email] = i
+
+        groups = defaultdict(<span class="hljs-built_in">list</span>)
+        <span class="hljs-keyword">for</span> email, account_idx <span class="hljs-keyword">in</span> email_2_account.items():
+            root = find(account_idx) <span class="hljs-comment"># 需要找到最开始的user名合并在这里不然合并零散！</span>
+            groups[root].append(email)
+
+        ans = []
+        <span class="hljs-keyword">for</span> root, emails <span class="hljs-keyword">in</span> groups.items():
+            name = accounts[root][<span class="hljs-number">0</span>]
+            ans.append([name] + <span class="hljs-built_in">sorted</span>(emails))
+        <span class="hljs-keyword">return</span> ans        
+</code></pre>
+<p><strong>考え方：</strong> ノードはアカウントの添字です。共有メールアドレスが併合の根拠で、同名だけでは不十分です。<code>email_2_account</code> は最初にそのメールを含んだアカウントを記録し、再出現時に併合して総当たり比較を避けます。全併合後、<code>find(account_idx)</code> ごとにメールを集めてソートします。</p>
+<p>Aが <code>x,y</code>、Bが <code>z</code>、Cが <code>y,z</code> を持つなら、Cが二つの集合をつなぎます。対応表は元の添字のままなので、分類時に根を調べ直します。</p>
+<p>原コメントの「最初のuser」は<strong>現在の代表元</strong>と読み、最古のアカウントとは限りません。同一人物の名前は一致するため <code>accounts[root][0]</code> で取得できます。集合の積集合を使う場合も、名前を証拠にせずメール部分 <code>accounts[i][1:]</code> だけを比較します。</p>
+<h2 id="复习检查点">復習の確認点</h2>
+<ul>
+<li><strong>根同士</strong>を併合し、同根なら集合数を変えません。</li>
+<li>所属判定・分類には <code>find</code> を使い、根の個数は <code>parents[i] == i</code> で数えられます。</li>
+<li>経路圧縮は訪問した経路だけを更新し、後の併合で代表元は変わり得ます。</li>
+<li>このテンプレートは経路圧縮のみで、ランクやサイズによる併合はありません。両方を使う場合のほぼ定数の償却計算量を、そのまま当てはめないでください。未圧縮の長い鎖では、一回の再帰的な検索でも多くのノードをたどります。</li>
+</ul>
+<p>コードの出典：2026-09-07にChrome上の四問のPython3エディタを読み、それぞれ二度コピーして照合しました。コードとコメントは原文を保ち、説明を別途追加しています。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/sliding-window"><small>← 前の記事</small><span>スライディングウィンドウ：拡張・縮小と不変条件</span></a><span></span></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#只把集合代表连接起来">集合の代表元同士だけをつなぐ</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#状态设计与核心骨架">状態設計と基本の骨格</a></li><li><a href="#重点为什么不能直接用-lensetparents">なぜ len(set(parents)) では数えられないのか</a></li><li><a href="#例题一547-省份数量">例1：Number of Provinces</a></li><li><a href="#例题二684-冗余连接">例2：Redundant Connection</a></li><li><a href="#例题三990-等式方程的可满足性">例3：等式の充足可能性</a></li><li><a href="#例题四721-账户合并">例4：Accounts Merge</a></li><li><a href="#复习检查点">復習の確認点</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

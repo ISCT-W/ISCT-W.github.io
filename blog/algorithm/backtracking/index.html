@@ -1,0 +1,96 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>回溯：在选择与撤销之间枚举答案 · 韦君豪</title><meta name="description" content="用回文分割与 N 皇后理解决策树、合法性检查和剪枝，并区分传递新路径与原地修改共享状态时不同的恢复方式。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/algorithm/backtracking/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/backtracking/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/backtracking/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/backtracking/"><meta property="og:title" content="回溯：在选择与撤销之间枚举答案 · 韦君豪"><meta property="og:description" content="用回文分割与 N 皇后理解决策树、合法性检查和剪枝，并区分传递新路径与原地修改共享状态时不同的恢复方式。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/algorithm/backtracking/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/backtracking" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/algorithm/backtracking" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/backtracking" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#algorithm">算法</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学习笔记</p><h1>回溯：在选择与撤销之间枚举答案</h1><p class="article-description">用回文分割与 N 皇后理解决策树、合法性检查和剪枝，并区分传递新路径与原地修改共享状态时不同的恢复方式。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 4 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="选择递归与撤销">选择、递归与撤销</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/3a89569ec5b102f345dc.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="回溯：在选择与撤销之间枚举答案: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/3a89569ec5b102f345dc.svg" alt="回溯：在选择与撤销之间枚举答案: 机制示意图" width="712" height="1267" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart TD
+ A["进入当前递归层"] --> B{"已构成完整答案？"}
+ B -->|是| C["保存路径副本并返回"]
+ B -->|否| H{"还有未尝试的候选？"}
+ H -->|否| R["返回上一层"]
+ H -->|是| D["取一个候选并检查合法性"]
+ D --> V{"合法？"}
+ V -->|否| H
+ V -->|是| E["修改共享路径 / 棋盘状态"]
+ E --> F["递归探索下一层"]
+ F --> G["撤销本层修改"]
+ G --> H
+</code></pre></details></div>
+<p>原地修改共享状态时，递归返回后必须撤销本层操作；如果传递的是新路径副本，则由对象隔离承担这一步。</p>
+<h2 id="先识别问题的结构">先识别问题的结构</h2>
+<p>当题目要求列举所有合法方案，且答案可以逐步选择、每一步有多个候选时，可以把选择过程画成决策树。回文分割的一层决定“下一段在哪里结束”，N 皇后的一层决定“这一行放在哪一列”；不合法的部分方案无法补救时，立即剪枝。</p>
+<h2 id="做题顺序">做题顺序</h2>
+<ol>
+<li>明确一层做什么，以及哪些状态足以决定下一步候选。</li>
+<li>确定成功结束条件，再枚举候选、检查合法性、递归。</li>
+<li>若原地修改共享路径或棋盘，返回后必须撤销；若每次传新副本，则无需撤销。保存共享路径时也要保存副本。</li>
+</ol>
+<h2 id="通用模板">通用模板</h2>
+<p>回溯就是在决策树上做深度优先搜索：选择一个候选，递归进入下一层，然后撤销选择。写题时先确定路径 <code>path</code>、下一层起点、合法候选和结束条件。</p>
+<p>下面是教学伪代码，中文表示需要按题目补全的步骤；不合法的候选应在递归前跳过。</p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">def</span> <span class="hljs-title function_">backtrack</span>(<span class="hljs-params">state</span>):
+    <span class="hljs-keyword">if</span> 满足结束条件:
+        保存答案
+        <span class="hljs-keyword">return</span>
+
+    <span class="hljs-keyword">for</span> choice <span class="hljs-keyword">in</span> 当前可选项:
+        做选择
+        backtrack(下一状态)
+        撤销选择
+</code></pre>
+<h2 id="例题一分割回文串">例题一：分割回文串</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/palindrome-partitioning/" target="_blank" rel="noopener noreferrer">LeetCode 131. 分割回文串</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">partition</span>(<span class="hljs-params">self, s: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]:
+        ans = []
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">backtracing</span>(<span class="hljs-params">idx, cur</span>):
+            <span class="hljs-keyword">if</span> idx >= <span class="hljs-built_in">len</span>(s): 
+                ans.append(cur)
+                <span class="hljs-keyword">return</span>
+            
+            <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(idx, <span class="hljs-built_in">len</span>(s)):
+                candidate = s[idx: i+<span class="hljs-number">1</span>]
+                <span class="hljs-keyword">if</span> candidate == candidate[::-<span class="hljs-number">1</span>]:
+                    backtracing(i+<span class="hljs-number">1</span>, cur + [candidate])
+        
+        backtracing(<span class="hljs-number">0</span>, [])
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>实现细节</strong>：<code>idx</code> 是下一段的起点，循环枚举本段终点 <code>i</code>。只有当前切片是回文串时才递归；<code>cur + [candidate]</code> 创建新路径，因此不需要显式撤销。</p>
+<h2 id="例题二n-皇后困难">例题二：N 皇后（困难）</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/n-queens/" target="_blank" rel="noopener noreferrer">LeetCode 51. N 皇后</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">solveNQueens</span>(<span class="hljs-params">self, n: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]:
+        <span class="hljs-comment"># 还是经典回溯，每次放一行直到放到最后一行；放的时候检查同列，左上与右上即可</span>
+        board = [[<span class="hljs-string">'.'</span>] * n <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n)]
+        res = []
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">backtracing</span>(<span class="hljs-params">row</span>):
+            <span class="hljs-keyword">if</span> row == n: <span class="hljs-comment"># 走完就是一种成功情况</span>
+                tmp = [<span class="hljs-string">''</span>.join(i) <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> board]
+                res.append(tmp)
+                <span class="hljs-keyword">return</span>
+            <span class="hljs-keyword">for</span> col <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n): <span class="hljs-comment"># 验证是否在这个位置可以放，可以就放并且回溯</span>
+                <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>.isValid(board, row, col): <span class="hljs-keyword">continue</span>
+                board[row][col] = <span class="hljs-string">'Q'</span>
+                backtracing(row + <span class="hljs-number">1</span>)
+                board[row][col] = <span class="hljs-string">'.'</span>
+
+        backtracing(<span class="hljs-number">0</span>)
+        <span class="hljs-keyword">return</span> res
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">isValid</span>(<span class="hljs-params">self, board, row, col</span>):
+        n = <span class="hljs-built_in">len</span>(board)
+        
+        <span class="hljs-comment"># 检查同col上方是否有</span>
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(row):
+            <span class="hljs-keyword">if</span> board[i][col] == <span class="hljs-string">'Q'</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+
+        <span class="hljs-comment"># 检查右上对角线</span>
+        <span class="hljs-keyword">for</span> i, j <span class="hljs-keyword">in</span> <span class="hljs-built_in">zip</span>(<span class="hljs-built_in">range</span>(row - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>, -<span class="hljs-number">1</span>), <span class="hljs-built_in">range</span>(col + <span class="hljs-number">1</span>, n, <span class="hljs-number">1</span>)):
+            <span class="hljs-keyword">if</span> board[i][j] == <span class="hljs-string">'Q'</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        
+        <span class="hljs-comment"># 检查左上对角线</span>
+        <span class="hljs-keyword">for</span> i, j <span class="hljs-keyword">in</span> <span class="hljs-built_in">zip</span>(<span class="hljs-built_in">range</span>(row - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>, -<span class="hljs-number">1</span>), <span class="hljs-built_in">range</span>(col - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>, -<span class="hljs-number">1</span>)):
+            <span class="hljs-keyword">if</span> board[i][j] == <span class="hljs-string">'Q'</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+    
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+</code></pre>
+<p><strong>题目思路</strong>：一行只能放一个皇后，所以递归层数直接表示行号。对当前行枚举每一列，只检查已经放过皇后的上方同列、左上和右上；合法则放置，递归下一行，返回后恢复为 <code>'.'</code>。当 <code>row == n</code> 时说明每行都成功放置，记录棋盘副本。</p></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#algorithm">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><span></span><a href="/blog/algorithm/binary-search"><small>下一篇 →</small><span>二分查找：证明答案只可能在一侧</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#选择递归与撤销">选择、递归与撤销</a></li><li><a href="#先识别问题的结构">先识别问题的结构</a></li><li><a href="#做题顺序">做题顺序</a></li><li><a href="#通用模板">通用模板</a></li><li><a href="#例题一分割回文串">例题一：分割回文串</a></li><li><a href="#例题二n-皇后困难">例题二：N 皇后（困难）</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

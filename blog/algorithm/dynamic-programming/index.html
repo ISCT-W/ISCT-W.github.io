@@ -1,0 +1,154 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>动态规划：状态、依赖与遍历顺序 · 韦君豪</title><meta name="description" content="用两类背包和双序列问题理解状态定义、初始化及转移，重点比较一维压缩后倒序与正序更新如何决定物品能否重复使用。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/dynamic-programming/"><meta property="og:title" content="动态规划：状态、依赖与遍历顺序 · 韦君豪"><meta property="og:description" content="用两类背包和双序列问题理解状态定义、初始化及转移，重点比较一维压缩后倒序与正序更新如何决定物品能否重复使用。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/algorithm/dynamic-programming/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/dynamic-programming" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/algorithm/dynamic-programming" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/dynamic-programming" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#algorithm">算法</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学习笔记</p><h1>动态规划：状态、依赖与遍历顺序</h1><p class="article-description">用两类背包和双序列问题理解状态定义、初始化及转移，重点比较一维压缩后倒序与正序更新如何决定物品能否重复使用。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 6 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="一维背包中遍历方向决定读取哪一轮状态">一维背包中，遍历方向决定读取哪一轮状态</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/0bf29014451c5e681a31.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="动态规划：状态、依赖与遍历顺序: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/0bf29014451c5e681a31.svg" alt="动态规划：状态、依赖与遍历顺序: 机制示意图" width="541" height="597" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart TD
+ A["状态：容量 j 的最优值或可达性"] --> B{"物品可重复使用？"}
+ B -->|每件一次| C["j 从大到小"]
+ C --> D["读取上一轮的 dp[j-w]"]
+ B -->|可以重复| E["j 从小到大"]
+ E --> F["允许读取本轮的 dp[j-w]"]
+</code></pre></details></div>
+<p>倒序更新避免同一件物品在本轮被重复使用；正序更新则允许刚更新的状态继续参与转移。这是两类背包最容易写错的差别。</p>
+<h2 id="先识别问题的结构">先识别问题的结构</h2>
+<p>将问题拆成状态后，如果不同选择会反复到达相同状态，而且该状态已经包含决定后续结果所需的信息，就可以存下结果避免重复计算。求最优值时还要确认：大问题的最优解能从这些子问题的最优解转移得到。</p>
+<table>
+<thead>
+<tr>
+<th>题目结构</th>
+<th>状态与模式</th>
+<th>关键依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每个数最多选一次，问能否凑出目标和</td>
+<td>0/1 背包：<code>dp[j]</code> 表示能否凑出 <code>j</code></td>
+<td>只关心可达总和；本轮不能重复使用同一物品</td>
+</tr>
+<tr>
+<td>若干面值可反复使用，问凑数所需最少数量</td>
+<td>完全背包：<code>dp[j]</code> 表示凑出 <code>j</code> 的最少数量</td>
+<td>取一个值后，剩余目标仍是同类子问题</td>
+</tr>
+<tr>
+<td>两个字符串的匹配、删除、插入、替换</td>
+<td>双序列 DP：<code>dp[i][j]</code> 表示两个前缀的答案</td>
+<td>比较末尾字符后，可转向更短前缀</td>
+</tr>
+</tbody>
+</table>
+<h2 id="把状态和不变量想清楚">把状态和不变量想清楚</h2>
+<p>动态规划的四个问题：<code>dp</code> 表示什么、初始值是什么、如何从已知状态转移、按什么顺序遍历才能保证依赖已经计算。</p>
+<h2 id="算法骨架">算法骨架</h2>
+<p>以下按三种模式分别写；<code>目标</code>、<code>物品</code>、<code>转移</code> 等均需按题意定义。压缩成一维数组后，遍历方向决定读到的是上一轮还是本轮状态。</p>
+<pre><code class="language-text"># 0/1 背包：每个物品只能取一次；这里演示可达性
+dp[0] = True，其余为 False
+for 数值 x in 物品:
+    for j 从目标倒序到 x:
+        dp[j] = dp[j] or dp[j - x]
+
+# 完全背包：每种物品可以反复取；这里演示最少数量
+dp[0] = 0，其余为无穷大
+for 数值 x in 物品:
+    for j 从 x 正序到目标:
+        dp[j] = min(dp[j], dp[j - x] + 1)
+
+# 双序列 DP：dp[i][j] 对应 A[:i] 和 B[:j]
+建立 (len(A) + 1) × (len(B) + 1) 的表
+按题意初始化空前缀对应的第一行、第一列
+for i 从 1 到 len(A):
+    for j 从 1 到 len(B):
+        比较 A[i - 1] 与 B[j - 1]
+        从 dp[i - 1][j]、dp[i][j - 1]、dp[i - 1][j - 1]
+        中选择题意允许的转移，写入 dp[i][j]
+返回目标状态
+</code></pre>
+<p>例如最长公共子序列的空前缀答案为 <code>0</code>；编辑距离的空前缀答案为另一前缀长度。二维状态不一定能只保留一行，需先确认所有依赖如何保留。</p>
+<h2 id="一维动态规划">一维动态规划</h2>
+<h3 id="例题一分割等和子集">例题一：分割等和子集</h3>
+<p>题目链接：<a href="https://leetcode.cn/problems/partition-equal-subset-sum/" target="_blank" rel="noopener noreferrer">LeetCode 416. 分割等和子集</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">canPartition</span>(<span class="hljs-params">self, nums: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">bool</span>:
+        summ = <span class="hljs-built_in">sum</span>(nums)
+        nums.sort(key=<span class="hljs-keyword">lambda</span> x: -x)
+        <span class="hljs-keyword">if</span> summ % <span class="hljs-number">2</span> <span class="hljs-keyword">or</span> nums[<span class="hljs-number">0</span>] > summ // <span class="hljs-number">2</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        dp = [<span class="hljs-number">0</span> <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(summ + <span class="hljs-number">1</span>)]
+        dp[<span class="hljs-number">0</span>] = <span class="hljs-number">1</span>
+
+        <span class="hljs-keyword">for</span> n <span class="hljs-keyword">in</span> nums:
+            <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(dp) - <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, -<span class="hljs-number">1</span>):
+                <span class="hljs-keyword">if</span> i >= n:
+                    dp[i] = dp[i] <span class="hljs-keyword">or</span> dp[i - n]
+        <span class="hljs-keyword">return</span> dp[summ // <span class="hljs-number">2</span>] == <span class="hljs-number">1</span>
+            
+</code></pre>
+<p><strong>实现细节</strong>：问题等价于能否从数组中选出若干数，使其和为总和的一半。<code>dp[i]</code> 表示能否凑出和 <code>i</code>；每个数只能使用一次，所以容量必须从大到小更新，避免同一轮重复使用当前数。</p>
+<h3 id="例题二完全平方数">例题二：完全平方数</h3>
+<p>题目链接：<a href="https://leetcode.cn/problems/perfect-squares/" target="_blank" rel="noopener noreferrer">LeetCode 279. 完全平方数</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">numSquares</span>(<span class="hljs-params">self, n: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># mins = [100000] * (n + 1)</span>
+        <span class="hljs-comment"># mins[0] = 0</span>
+        <span class="hljs-comment"># mins[1] = 1</span>
+
+        <span class="hljs-comment"># for i in range(2, len(mins)):</span>
+        <span class="hljs-comment">#     for j in range(int(math.sqrt(i)), 0, -1):</span>
+        <span class="hljs-comment">#         if i >= j ** 2:</span>
+        <span class="hljs-comment">#             mins[i] = min(mins[i], mins[i-j**2]+1)</span>
+        <span class="hljs-comment"># return mins[-1]</span>
+
+        <span class="hljs-comment"># 背包问题：把东西往背包放（外层东西，内层背包）</span>
+        <span class="hljs-comment"># 背包外圈循环物品，内圈循环背包容量；零一背包遵循内圈从大往小循环，完全背包遵循内圈从小往大循环。</span>
+            <span class="hljs-comment"># 0/1 背包倒序：避免当前物品在同一轮被重复使用。</span>
+            <span class="hljs-comment"># 完全背包正序：允许当前物品在同一轮被重复使用。</span>
+            
+        dp = [<span class="hljs-number">100000</span>] * (n + <span class="hljs-number">1</span>)
+        dp[<span class="hljs-number">0</span>] = <span class="hljs-number">0</span>
+        sqaures = [i * i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">int</span>(math.sqrt(n)) + <span class="hljs-number">1</span>)]
+        <span class="hljs-keyword">for</span> s <span class="hljs-keyword">in</span> sqaures:
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(s, n + <span class="hljs-number">1</span>): <span class="hljs-comment"># 放背包</span>
+                dp[j] = <span class="hljs-built_in">min</span>(dp[j], dp[j - s] + <span class="hljs-number">1</span>)
+        <span class="hljs-keyword">return</span> dp[n]
+</code></pre>
+<p><strong>实现细节</strong>：把每个完全平方数视为可以无限使用的物品，<code>dp[j]</code> 表示组成 <code>j</code> 所需的最少数量。完全背包的容量从小到大更新，因此本轮刚更新的 <code>dp[j-s]</code> 可以继续使用同一个平方数。</p>
+<blockquote>
+<p>原代码保留原始实现；独立运行时需要补充 <code>import math</code>。</p>
+</blockquote>
+<h2 id="二维动态规划">二维动态规划</h2>
+<h3 id="例题三最长公共子序列">例题三：最长公共子序列</h3>
+<p>题目链接：<a href="https://leetcode.cn/problems/longest-common-subsequence/" target="_blank" rel="noopener noreferrer">LeetCode 1143. 最长公共子序列</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">longestCommonSubsequence</span>(<span class="hljs-params">self, text1: <span class="hljs-built_in">str</span>, text2: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># 再长也超不过短的字符串长度</span>
+        dp = [[<span class="hljs-number">0</span> <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(text1) + <span class="hljs-number">1</span>)] <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(text2) + <span class="hljs-number">1</span>)]
+        
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp)): 
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp[<span class="hljs-number">0</span>])):
+                <span class="hljs-keyword">if</span> text2[i - <span class="hljs-number">1</span>] == text1[j - <span class="hljs-number">1</span>]:
+                    dp[i][j] = dp[i - <span class="hljs-number">1</span>][j - <span class="hljs-number">1</span>] + <span class="hljs-number">1</span>
+                <span class="hljs-keyword">else</span>: dp[i][j] = <span class="hljs-built_in">max</span>(dp[i][j - <span class="hljs-number">1</span>], dp[i - <span class="hljs-number">1</span>][j])
+        <span class="hljs-keyword">return</span> dp[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+            
+</code></pre>
+<p><strong>实现细节</strong>：<code>dp[i][j]</code> 表示 <code>text2</code> 前 <code>i</code> 个字符与 <code>text1</code> 前 <code>j</code> 个字符的最长公共子序列长度。末尾字符相同就接在 <code>dp[i-1][j-1]</code> 后面；不同就分别舍弃一个末尾字符并取较大值。</p>
+<h3 id="例题四编辑距离">例题四：编辑距离</h3>
+<p>题目链接：<a href="https://leetcode.cn/problems/edit-distance/" target="_blank" rel="noopener noreferrer">LeetCode 72. 编辑距离</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">minDistance</span>(<span class="hljs-params">self, word1: <span class="hljs-built_in">str</span>, word2: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">int</span>:
+        dp = [[i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(word1) + <span class="hljs-number">1</span>)] <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(word2) + <span class="hljs-number">1</span>)] <span class="hljs-comment"># 一边长n一边长0的编辑距离一定为n 同理要修轴向</span>
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(dp)):
+            dp[i][<span class="hljs-number">0</span>] = i
+        dp[<span class="hljs-number">0</span>][<span class="hljs-number">0</span>] = <span class="hljs-number">0</span> <span class="hljs-comment"># 用来防止边界问题</span>
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp)):
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp[<span class="hljs-number">0</span>])):
+                <span class="hljs-keyword">if</span> word1[j-<span class="hljs-number">1</span>] == word2[i-<span class="hljs-number">1</span>]: <span class="hljs-comment"># 这位一样那么和去掉这位的编辑距离一样</span>
+                    dp[i][j] = dp[i-<span class="hljs-number">1</span>][j-<span class="hljs-number">1</span>]
+                <span class="hljs-keyword">else</span>: <span class="hljs-comment"># 这位不一样就从三种最近可能里取最小再加一即可</span>
+                    dp[i][j] = <span class="hljs-built_in">min</span>(dp[i][j-<span class="hljs-number">1</span>], dp[i-<span class="hljs-number">1</span>][j], dp[i-<span class="hljs-number">1</span>][j-<span class="hljs-number">1</span>]) + <span class="hljs-number">1</span>
+        <span class="hljs-keyword">return</span> dp[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+</code></pre>
+<p><strong>实现细节</strong>：<code>dp[i][j]</code> 表示把 <code>word1[:j]</code> 变成 <code>word2[:i]</code> 的最少操作数。字符相同无需操作，取左上角；不同则从删除、插入、替换三个前置状态中取最小值再加一。第一行和第一列表示空字符串与非空前缀之间只能连续插入或删除。</p>
+<h2 id="01-背包与完全背包的循环方向">0/1 背包与完全背包的循环方向</h2>
+<ul>
+<li>0/1 背包：每件物品最多用一次，容量倒序更新。</li>
+<li>完全背包：每件物品可以重复使用，容量正序更新。</li>
+</ul></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#algorithm">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/algorithm/dijkstra"><small>← 上一篇</small><span>Dijkstra：从最短路到最小体力路径</span></a><a href="/blog/algorithm/graph-bfs-trie"><small>下一篇 →</small><span>图论、BFS 与 Trie：三种不同的问题结构</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#一维背包中遍历方向决定读取哪一轮状态">一维背包中，遍历方向决定读取哪一轮状态</a></li><li><a href="#先识别问题的结构">先识别问题的结构</a></li><li><a href="#把状态和不变量想清楚">把状态和不变量想清楚</a></li><li><a href="#算法骨架">算法骨架</a></li><li><a href="#一维动态规划">一维动态规划</a></li><li><a href="#二维动态规划">二维动态规划</a></li><li><a href="#01-背包与完全背包的循环方向">0/1 背包与完全背包的循环方向</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

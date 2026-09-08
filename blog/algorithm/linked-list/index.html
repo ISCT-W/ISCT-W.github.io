@@ -1,0 +1,250 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>链表：让每次指针修改都有明确边界 · 韦君豪</title><meta name="description" content="通过反转链表、环入口、分组翻转与 LRU 缓存，解释后继保存、快慢指针、递归承诺和哈希表与双向链表的一致性。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/algorithm/linked-list/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/linked-list/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/linked-list/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/linked-list/"><meta property="og:title" content="链表：让每次指针修改都有明确边界 · 韦君豪"><meta property="og:description" content="通过反转链表、环入口、分组翻转与 LRU 缓存，解释后继保存、快慢指针、递归承诺和哈希表与双向链表的一致性。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/algorithm/linked-list/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/linked-list" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/algorithm/linked-list" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/linked-list" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#algorithm">算法</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学习笔记</p><h1>链表：让每次指针修改都有明确边界</h1><p class="article-description">通过反转链表、环入口、分组翻转与 LRU 缓存，解释后继保存、快慢指针、递归承诺和哈希表与双向链表的一致性。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 7 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="反转链表时先保存还没有处理的部分">反转链表时，先保存还没有处理的部分</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/b31b06bb03d4802c540b.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="链表：让每次指针修改都有明确边界: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/b31b06bb03d4802c540b.svg" alt="链表：让每次指针修改都有明确边界: 机制示意图" width="642" height="683" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart TD
+ A["prev = 空，curr = 原链表头"] --> B{"curr 非空？"}
+ B -->|否| Z["返回 prev：反转后的头"]
+ B -->|是| C["先保存 nxt = curr.next"]
+ C --> D["令 curr.next 指向 prev"]
+ D --> E["prev 移到 curr，curr 移到 nxt"]
+ E --> B
+</code></pre></details></div>
+<p>修改指针前先保存原后继，是避免丢失剩余链表的关键。每次循环结束后，prev 指向完成部分，curr 指向尚未处理部分。</p>
+<h2 id="先识别问题的结构">先识别问题的结构</h2>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>采用的思路及依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>反转、删除或重排节点</td>
+<td>局部修改 <code>next</code> 即可重连；需要提前保存尚未处理的后继节点</td>
+</tr>
+<tr>
+<td>判断环、找环入口</td>
+<td>快慢指针在环内会因速度差相遇；无环时快指针先走到空节点</td>
+</tr>
+<tr>
+<td>K 个一组翻转</td>
+<td>可拆成“完整的一组 + 剩余链表”；先确认足够 K 个，再翻转并连接递归结果</td>
+</tr>
+<tr>
+<td>LRU 要求按键查找和调整使用顺序均为 <code>O(1)</code></td>
+<td>哈希表定位节点，双向链表提供已知节点的常数时间删除/插入；单链表不能直接找到前驱</td>
+</tr>
+</tbody>
+</table>
+<h2 id="把状态和不变量想清楚">把状态和不变量想清楚</h2>
+<ul>
+<li>画出指针变化再写代码，重点确认“断链前是否保存了后继节点”。</li>
+<li>需要修改头节点时，可考虑虚拟头节点；判断环或中点时，优先考虑快慢指针。</li>
+<li>递归处理链表时，先明确函数承诺：它接收什么范围，返回哪两个端点，下一段由谁连接。</li>
+</ul>
+<h2 id="教学骨架">教学骨架</h2>
+<p>下面是各模式的伪代码；中文步骤需要按题意实现，不能将它们合成同一个指针循环。</p>
+<pre><code class="language-text">迭代反转：
+    pre = None，cur = head
+    while cur 非空：
+        next_node = cur.next       # 保存未处理部分
+        cur.next = pre             # 接入已反转部分
+        pre = cur，cur = next_node
+    return pre
+
+本篇递归反转 rev(cur, pre)：
+    if cur 为空：return pre
+    new_head = rev(cur.next, cur)
+    cur.next = pre                 # 回溯时连向原前驱
+    return new_head
+
+环入口：
+    slow = fast = head
+    while fast 和 fast.next 非空：
+        slow 前进一步，fast 前进两步
+        若相遇：一个指针回到 head，两者同步前进一步直到相遇，返回该节点
+    return None
+
+K 个一组翻转：
+    从 head 找满 K 个节点；不足则 return head
+    保存 next_group，翻转本组，得到 new_head 和 new_tail
+    new_tail.next = 递归处理(next_group, K)
+    return new_head
+
+LRU：
+    初始化 key→节点 的字典及双向链表头尾哨兵
+    get：未命中返回 -1；命中则移到最前并返回值
+    put：已有键更新并移到最前；新键加入字典和链表最前
+         若超容量，同时删除链表最后的实际节点及其字典条目
+</code></pre>
+<p>反转过程中，<code>pre</code> 指向已处理部分、<code>cur</code> 指向待处理部分；递归版则由回溯逐步完成改向。LRU 的不变量是“字典与链表包含同一批实际节点，最前是最近使用、最后是最久未用”。</p>
+<h2 id="例题一反转链表">例题一：反转链表</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/reverse-linked-list/" target="_blank" rel="noopener noreferrer">LeetCode 206. 反转链表</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, next=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.next = next</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverseList</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode]</span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        <span class="hljs-comment"># pre = None</span>
+        <span class="hljs-comment"># cur = head</span>
+        <span class="hljs-comment"># while cur:</span>
+        <span class="hljs-comment">#     tmp = cur.next</span>
+        <span class="hljs-comment">#     cur.next = pre</span>
+        <span class="hljs-comment">#     pre = cur</span>
+        <span class="hljs-comment">#     cur = tmp</span>
+        <span class="hljs-comment"># return pre</span>
+        
+        pre = <span class="hljs-literal">None</span>
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">rev</span>(<span class="hljs-params">cur, pre</span>):
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> cur: <span class="hljs-keyword">return</span> pre
+            res = rev(cur.<span class="hljs-built_in">next</span>, cur)
+            cur.<span class="hljs-built_in">next</span> = pre
+            <span class="hljs-keyword">return</span> res
+        revd = rev(head, pre)
+        <span class="hljs-keyword">return</span> revd
+</code></pre>
+<p><strong>实现细节</strong>：注释部分是迭代写法；当前实际执行的是递归写法。<code>rev(cur, pre)</code> 表示“把从 <code>cur</code> 开始的链表反转，并让 <code>cur</code> 最终指向 <code>pre</code>”。递归先携带新的前驱进入下一节点，回溯时再执行 <code>cur.next = pre</code>。</p>
+<p><strong>递归例子</strong>：对 <code>1 -> 2 -> 3 -> None</code> 调用 <code>rev(1, None)</code>：</p>
+<pre><code class="language-text">rev(1, None)
+  -> rev(2, 1)
+       -> rev(3, 2)
+            -> rev(None, 3)，返回节点 3
+</code></pre>
+<p>回溯时依次设置 <code>3.next = 2</code>、<code>2.next = 1</code>、<code>1.next = None</code>，最终返回新头节点 <code>3</code>。</p>
+<h2 id="例题二环形链表-ii">例题二：环形链表 II</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/linked-list-cycle-ii/" target="_blank" rel="noopener noreferrer">LeetCode 142. 环形链表 II</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, x):</span>
+<span class="hljs-comment">#         self.val = x</span>
+<span class="hljs-comment">#         self.next = None</span>
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">detectCycle</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode]</span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        s, l = head, head
+
+        <span class="hljs-keyword">while</span> <span class="hljs-literal">True</span>:
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> l <span class="hljs-keyword">or</span> <span class="hljs-keyword">not</span> l.<span class="hljs-built_in">next</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">None</span>
+            s = s.<span class="hljs-built_in">next</span>
+            l = l.<span class="hljs-built_in">next</span>.<span class="hljs-built_in">next</span>
+            <span class="hljs-keyword">if</span> s == l: <span class="hljs-keyword">break</span>
+        l = head
+        <span class="hljs-keyword">while</span> l != s:
+            l, s = l.<span class="hljs-built_in">next</span>, s.<span class="hljs-built_in">next</span>
+        <span class="hljs-keyword">return</span> l
+</code></pre>
+<p><strong>实现细节</strong>：快指针每次走两步，慢指针走一步。第一次相遇后，把一个指针放回头节点；两者再各走一步，下一次相遇点就是环入口。</p>
+<p><strong>为什么</strong>：设头到入口为 <code>a</code>，入口到首次相遇点为 <code>b</code>，环长为 <code>c</code>。相遇时快指针比慢指针多走整圈，可推出 <code>a</code> 与“相遇点继续走到入口”的距离相差整圈，所以同步前进会在入口相遇。</p>
+<h2 id="例题三k-个一组翻转链表困难">例题三：K 个一组翻转链表（困难）</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/reverse-nodes-in-k-group/" target="_blank" rel="noopener noreferrer">LeetCode 25. K 个一组翻转链表</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, next=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.next = next</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverseKGroup</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode], k: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverse</span>(<span class="hljs-params">head, tail</span>):
+            pre = tail.<span class="hljs-built_in">next</span>
+            cur = head
+            <span class="hljs-keyword">while</span> pre != tail: <span class="hljs-comment"># 关键循环，建议自己画链子 - 先保存旧 next，然后pre接上新next，然后往后 - 其实是链表很通用的过程</span>
+                suc = cur.<span class="hljs-built_in">next</span>
+                cur.<span class="hljs-built_in">next</span> = pre
+                pre = cur
+                cur = suc
+            <span class="hljs-keyword">return</span> tail, head
+
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> head <span class="hljs-keyword">or</span> <span class="hljs-keyword">not</span> head.<span class="hljs-built_in">next</span>: <span class="hljs-keyword">return</span> head
+        tail = head
+        <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(k - <span class="hljs-number">1</span>): <span class="hljs-comment"># 找到当前的tail以进入当前修改</span>
+            tail = tail.<span class="hljs-built_in">next</span>
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> tail: <span class="hljs-keyword">return</span> head
+        suc = tail.<span class="hljs-built_in">next</span> <span class="hljs-comment"># 记录下一组的开头</span>
+        new_head, _  = reverse(head, tail) <span class="hljs-comment"># 反转这一组</span>
+        head.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.reverseKGroup(suc, k) <span class="hljs-comment"># 递归处理剩余部分</span>
+        <span class="hljs-keyword">return</span> new_head
+</code></pre>
+<h3 id="分组与递归到底在做什么">分组与递归到底在做什么</h3>
+<p><code>reverseKGroup(head, k)</code> 的承诺是：处理从 <code>head</code> 开始的整条链表，并返回处理后的新头节点。</p>
+<ol>
+<li>先向后走 <code>k - 1</code> 步找到本组 <code>tail</code>；若凑不够 <code>k</code> 个节点，原样返回。</li>
+<li><code>reverse(head, tail)</code> 只翻转闭区间 <code>[head, tail]</code>，返回本组的新头 <code>tail</code> 和新尾 <code>head</code>。</li>
+<li><code>suc = tail.next</code> 保存下一组起点。</li>
+<li><code>head.next = self.reverseKGroup(suc, k)</code> 递归处理后续链表，并把本组新尾接过去。</li>
+</ol>
+<p><strong>例子</strong>：<code>1 -> 2 -> 3 -> 4 -> 5</code>，<code>k = 2</code>。</p>
+<ul>
+<li>第一组 <code>[1, 2]</code> 翻转成 <code>2 -> 1</code>，此时 <code>1</code> 是新尾；</li>
+<li>递归处理 <code>3 -> 4 -> 5</code>，得到 <code>4 -> 3 -> 5</code>；</li>
+<li>让 <code>1.next</code> 指向递归结果，最终为 <code>2 -> 1 -> 4 -> 3 -> 5</code>。</li>
+</ul>
+<p><code>reverse</code> 中令 <code>pre = tail.next</code>，可以让本组最后翻转出的旧头暂时直接连向下一段；之后递归返回的新头会覆盖这个连接。</p>
+<h2 id="例题四lru-缓存">例题四：LRU 缓存</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/lru-cache/" target="_blank" rel="noopener noreferrer">LeetCode 146. LRU 缓存</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Node</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, key=<span class="hljs-number">0</span>, value=<span class="hljs-number">0</span></span>): <span class="hljs-comment"># 按照使用顺序排序</span>
+        <span class="hljs-variable language_">self</span>.key = key
+        <span class="hljs-variable language_">self</span>.value = value
+        <span class="hljs-variable language_">self</span>.prev = <span class="hljs-literal">None</span>
+        <span class="hljs-variable language_">self</span>.<span class="hljs-built_in">next</span> = <span class="hljs-literal">None</span>
+
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">LRUCache</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, capacity: <span class="hljs-built_in">int</span></span>):
+        <span class="hljs-variable language_">self</span>.capacity = capacity
+        <span class="hljs-variable language_">self</span>.cache = {} <span class="hljs-comment"># O(1)查找</span>
+
+        <span class="hljs-variable language_">self</span>.head = Node()
+        <span class="hljs-variable language_">self</span>.tail = Node()
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.tail
+        <span class="hljs-variable language_">self</span>.tail.prev = <span class="hljs-variable language_">self</span>.head
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">_remove</span>(<span class="hljs-params">self, node</span>):
+        node.prev.<span class="hljs-built_in">next</span> = node.<span class="hljs-built_in">next</span>
+        node.<span class="hljs-built_in">next</span>.prev = node.prev
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">_add_front</span>(<span class="hljs-params">self, node</span>):
+        node.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span>
+        node.prev = <span class="hljs-variable language_">self</span>.head
+
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span>.prev = node
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span> = node
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">get</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-keyword">if</span> key <span class="hljs-keyword">not</span> <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.cache: <span class="hljs-keyword">return</span> -<span class="hljs-number">1</span>
+        
+        node = <span class="hljs-variable language_">self</span>.cache.get(key)
+
+        <span class="hljs-comment"># 刚访问放在一开始</span>
+        <span class="hljs-variable language_">self</span>._remove(node)
+        <span class="hljs-variable language_">self</span>._add_front(node)
+        <span class="hljs-keyword">return</span> node.value
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">put</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">int</span>, value: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-literal">None</span>:
+        <span class="hljs-comment"># 1. 已经有只需要更新；</span>
+        <span class="hljs-keyword">if</span> key <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.cache:
+            node = <span class="hljs-variable language_">self</span>.cache.get(key)
+            node.value = value
+
+            <span class="hljs-comment"># 更新位置到一开始</span>
+            <span class="hljs-variable language_">self</span>._remove(node)
+            <span class="hljs-variable language_">self</span>._add_front(node)
+
+        <span class="hljs-comment"># 2.新加入则新建节点；期间如果超过长度则remove tail.prev</span>
+        <span class="hljs-keyword">else</span>:
+            node = Node(key, value)
+            <span class="hljs-variable language_">self</span>.cache[key] = node
+            <span class="hljs-variable language_">self</span>._add_front(node)
+
+            <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.cache) > <span class="hljs-variable language_">self</span>.capacity:
+                old = <span class="hljs-variable language_">self</span>.tail.prev
+                <span class="hljs-variable language_">self</span>._remove(old)
+                <span class="hljs-keyword">del</span> <span class="hljs-variable language_">self</span>.cache[old.key]
+
+<span class="hljs-comment"># Your LRUCache object will be instantiated and called as such:</span>
+<span class="hljs-comment"># obj = LRUCache(capacity)</span>
+<span class="hljs-comment"># param_1 = obj.get(key)</span>
+<span class="hljs-comment"># obj.put(key,value)</span>
+</code></pre>
+<p><strong>实现细节</strong>：哈希表负责 <code>O(1)</code> 找节点，双向链表负责 <code>O(1)</code> 删除和移动。靠近 <code>head</code> 表示最近使用，<code>tail.prev</code> 表示最久未使用；<code>get</code> 和更新已有键都会把节点移到最前面。</p></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#algorithm">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/algorithm/lexicographical-order"><small>← 上一篇</small><span>字典序与下一个排列：让序列只增大一点</span></a><a href="/blog/algorithm/matrix-simulation"><small>下一篇 →</small><span>矩阵模拟：用四条边界走完螺旋</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#反转链表时先保存还没有处理的部分">反转链表时，先保存还没有处理的部分</a></li><li><a href="#先识别问题的结构">先识别问题的结构</a></li><li><a href="#把状态和不变量想清楚">把状态和不变量想清楚</a></li><li><a href="#教学骨架">教学骨架</a></li><li><a href="#例题一反转链表">例题一：反转链表</a></li><li><a href="#例题二环形链表-ii">例题二：环形链表 II</a></li><li><a href="#例题三k-个一组翻转链表困难">例题三：K 个一组翻转链表（困难）</a></li><li><a href="#例题四lru-缓存">例题四：LRU 缓存</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

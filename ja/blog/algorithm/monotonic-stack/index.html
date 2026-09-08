@@ -1,0 +1,112 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>単調スタック：現在の要素で過去の候補を確定する · 韋 君豪</title><meta name="description" content="## 現在の要素が過去の候補の答えを決める"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/monotonic-stack/"><meta property="og:title" content="単調スタック：現在の要素で過去の候補を確定する · 韋 君豪"><meta property="og:description" content="## 現在の要素が過去の候補の答えを決める"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/monotonic-stack/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/monotonic-stack" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/monotonic-stack" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/monotonic-stack" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>単調スタック：現在の要素で過去の候補を確定する</h1><p class="article-description">## 現在の要素が過去の候補の答えを決める</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 4 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="当前元素让历史候选得到答案">現在の要素が過去の候補の答えを決める</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/e4b98dbe75083167fff8.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="単調スタック：現在の要素で過去の候補を確定する: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/e4b98dbe75083167fff8.svg" alt="単調スタック：現在の要素で過去の候補を確定する: 仕組みの図（原文のラベル）" width="465" height="554" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart LR
+ A["新的温度 T[i]"] --> B{"比栈顶温度高？"}
+ B -->|是| C["弹出下标 j，答案为 i-j"]
+ C --> B
+ B -->|否或栈空| D["把 i 入栈"]
+ D --> E["等待下一个元素"]
+</code></pre></details></div>
+<p>Daily Temperaturesのスタックには、まだ暖かい日が見つかっていない添字を保存します。各添字は高々一度ずつ追加・削除されるため、全体の処理量は線形です。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<ul>
+<li>各位置の左右で最初に大きい・小さい要素を探す場合や、その境界から幅や面積を計算する場合に単調スタックを考えます。</li>
+<li>削除前に、現在の要素で先頭候補の答えが確定したか、保持する必要がなくなったかを確認します。高い気温は次に大きい値を確定し、低い棒は長方形の右方向への拡張を止めます。</li>
+<li>通常は未確定の添字を保存します。添字は順序を保ち、対応する値が必要な方向に単調になります。各添字の追加・削除は一度ずつで、時間は <code>O(n)</code> です。</li>
+<li>比較演算子は「厳密に大きい・小さい」かどうかで決めます。同値を削除するかは境界の定義と合わせます。気温と雨水の例は同値を残した非増加、長方形の例は同値を残した非減少です。</li>
+</ul>
+<h2 id="核心思路">基本の考え方</h2>
+<p>値が増加または減少する列を保ちます。新しい要素が単調性を崩したら、条件を満たすまで取り出し、その時点で答えを計算します。</p>
+<p>以下の学習用疑似コードでは、判定条件と計算手順を中国語のプレースホルダーで残しています。</p>
+<pre><code class="hljs language-python"><span class="hljs-string">"""
+单调栈通用模版：
+1. 栈中通常保存下标，方便同时获得元素值、距离和区间宽度
+2. 遍历每个元素
+3. 当前元素破坏单调性时，不断弹栈并结算答案
+4. 当前下标入栈
+5. 必要时用哨兵处理栈内剩余元素
+"""</span>
+
+stack = []
+<span class="hljs-keyword">for</span> i, value <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(nums):
+    <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> 当前元素破坏单调性:
+        j = stack.pop()
+        根据 i、j 和新的栈顶计算答案
+    stack.append(i)
+</code></pre>
+<h2 id="例题一每日温度下一个更高温度">例1：Daily Temperatures</h2>
+<p>問題：<a href="https://leetcode.cn/problems/daily-temperatures/" target="_blank" rel="noopener noreferrer">LeetCode 739</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">dailyTemperatures</span>(<span class="hljs-params">self, temperatures: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]:
+        ans = [<span class="hljs-number">0</span>] * <span class="hljs-built_in">len</span>(temperatures)
+        stack = []  <span class="hljs-comment"># 尚未找到更高温度的下标；对应温度单调递减</span>
+
+        <span class="hljs-keyword">for</span> i, temperature <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(temperatures):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> temperature > temperatures[stack[-<span class="hljs-number">1</span>]]:
+                j = stack.pop()
+                ans[j] = i - j
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>考え方：</strong> スタックは答えが未確定の日を保持します。現在の気温が高ければ、取り出された日 <code>j</code> にとって初めて暖かい日であり、待ち時間は <code>i - j</code> です。</p>
+<h2 id="例题二接雨水">例2：Trapping Rain Water</h2>
+<p>問題：<a href="https://leetcode.cn/problems/trapping-rain-water/" target="_blank" rel="noopener noreferrer">LeetCode 42</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">trap</span>(<span class="hljs-params">self, height: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        ans = <span class="hljs-number">0</span>
+        stack = []  <span class="hljs-comment"># 下标对应的高度单调递减</span>
+
+        <span class="hljs-keyword">for</span> i, current_height <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(height):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> current_height > height[stack[-<span class="hljs-number">1</span>]]:
+                bottom = stack.pop()
+                <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> stack:
+                    <span class="hljs-keyword">break</span>
+
+                left = stack[-<span class="hljs-number">1</span>]
+                width = i - left - <span class="hljs-number">1</span>
+                bounded_height = <span class="hljs-built_in">min</span>(height[left], current_height) - height[bottom]
+                ans += width * bounded_height
+
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>考え方：</strong> 取り出す棒がくぼみの底です。新しい先頭と現在の棒が左右の壁となり、この層の水量は <code>幅 × 有効な高さ</code> です。</p>
+<h2 id="例题三最大矩形矩阵版">例3：行列中の最大長方形</h2>
+<p>問題：<a href="https://leetcode.cn/problems/maximal-rectangle/" target="_blank" rel="noopener noreferrer">LeetCode 85</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">maximalRectangle</span>(<span class="hljs-params">self, matrix: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> matrix:
+            <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+
+        heights = [<span class="hljs-number">0</span>] * <span class="hljs-built_in">len</span>(matrix[<span class="hljs-number">0</span>])
+        ans = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">for</span> row <span class="hljs-keyword">in</span> matrix:
+            <span class="hljs-keyword">for</span> i, value <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(row):
+                heights[i] = heights[i] + <span class="hljs-number">1</span> <span class="hljs-keyword">if</span> value == <span class="hljs-string">'1'</span> <span class="hljs-keyword">else</span> <span class="hljs-number">0</span>
+            ans = <span class="hljs-built_in">max</span>(ans, <span class="hljs-variable language_">self</span>.largestRectangleArea(heights))
+
+        <span class="hljs-keyword">return</span> ans
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">largestRectangleArea</span>(<span class="hljs-params">self, heights: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        heights = [<span class="hljs-number">0</span>] + heights + [<span class="hljs-number">0</span>]  <span class="hljs-comment"># 两侧哨兵</span>
+        stack = []  <span class="hljs-comment"># 下标对应的高度单调递增</span>
+        ans = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">for</span> i, current_height <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(heights):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> current_height &#x3C; heights[stack[-<span class="hljs-number">1</span>]]:
+                height = heights[stack.pop()]
+                width = i - stack[-<span class="hljs-number">1</span>] - <span class="hljs-number">1</span>
+                ans = <span class="hljs-built_in">max</span>(ans, height * width)
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>考え方：</strong> 各行をヒストグラムの底辺とし、<code>heights[i]</code> にその列で連続する <code>1</code> の高さを記録します。低い棒に出会うと、取り出した高さは右へ伸ばせません。新しい先頭と現在の添字が左右の境界です。</p>
+<h2 id="三题的共同点">三問の共通点</h2>
+<ul>
+<li><strong>気温：</strong> 取り出す際に、右側で最初に大きい要素が確定します。</li>
+<li><strong>雨水：</strong> 左右の境界を使い、くぼみの一層を計算します。</li>
+<li><strong>長方形：</strong> 各行をヒストグラムに変え、取り出す際にその高さの最大幅を決めます。</li>
+</ul></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/matrix-simulation"><small>← 前の記事</small><span>行列のシミュレーション：未訪問の長方形を縮める</span></a><a href="/ja/blog/algorithm/prefix-sum"><small>次の記事 →</small><span>累積和：必要な過去の状態を探す</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#当前元素让历史候选得到答案">現在の要素が過去の候補の答えを決める</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#核心思路">基本の考え方</a></li><li><a href="#例题一每日温度下一个更高温度">例1：Daily Temperatures</a></li><li><a href="#例题二接雨水">例2：Trapping Rain Water</a></li><li><a href="#例题三最大矩形矩阵版">例3：行列中の最大長方形</a></li><li><a href="#三题的共同点">三問の共通点</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

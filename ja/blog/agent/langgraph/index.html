@@ -1,0 +1,107 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LangGraph：状態、復旧、長時間処理の実行規約 · 韋 君豪</title><meta name="description" content="長い処理では次の関数を選ぶだけでなく、進捗保存、並行更新の統合、人の入力待ち、障害後に再実行できる操作の判断が必要です。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/agent/langgraph/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/langgraph/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/langgraph/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/langgraph/"><meta property="og:title" content="LangGraph：状態、復旧、長時間処理の実行規約 · 韋 君豪"><meta property="og:description" content="長い処理では次の関数を選ぶだけでなく、進捗保存、並行更新の統合、人の入力待ち、障害後に再実行できる操作の判断が必要です。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/agent/langgraph/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/langgraph" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/agent/langgraph" lang="en" hrefLang="en">EN</a><a href="/ja/blog/agent/langgraph" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#agent">エージェント応用</a></nav><header class="article-header"><p class="eyebrow ">AGENT / 学習ノート</p><h1>LangGraph：状態、復旧、長時間処理の実行規約</h1><p class="article-description">長い処理では次の関数を選ぶだけでなく、進捗保存、並行更新の統合、人の入力待ち、障害後に再実行できる操作の判断が必要です。</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 11 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>長い処理では次の関数を選ぶだけでなく、進捗保存、並行更新の統合、人の入力待ち、障害後に再実行できる操作の判断が必要です。LangGraph は状態と永続化でこれらを整理します。実行スナップショット、モデルの文脈、外部副作用を分け、再開を「停止した次の行から続く」と考えないことが重要です。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/f04b89d6110684d31799.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="LangGraph：状態、復旧、長時間処理の実行規約: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/f04b89d6110684d31799.svg" alt="LangGraph：状態、復旧、長時間処理の実行規約: 仕組みの図（原文のラベル）" width="587" height="1181" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+    S["读取当前图状态"] --> N["激活节点执行"]
+    N --> U["返回状态更新"]
+    U --> R["按 Reducer 合并并行更新"]
+    R --> C["保存 Checkpoint 与下一步信息"]
+    C --> D{"继续、结束或等待人工输入"}
+    D -->|"继续"| S
+    D -->|"结束"| E["交付结果"]
+    D -->|"等待输入"| H["相同 Thread 接收恢复值"]
+    H --> P["恢复相关节点；保护可重放边界"]
+    P --> N
+</code></pre></details></div>
+<p>保存するのは状態と実行進捗であり、任意のローカル変数ではありません。Interrupt の後は関連ノードを再実行するため、副作用を安全に再生できる境界が必要です。</p>
+<p>本記事は 2026 年 8 月の公式 Python 文書に基づきます。永続化モードや Streaming は利用版で確認してください。</p>
+<h2 id="状态与更新协议">状態と更新の規約</h2>
+<h3 id="statenode-与-edge-的执行约定">State、Node、Edge の契約</h3>
+<p>State は共有スナップショットと Schema、Node はそれを読んで変更分を返す関数、Edge は次の実行先です。ノードは全状態を返す必要はありません。一時オブジェクト、接続、重複した大文書ではなく、必要な事実と制御項目を保存します。</p>
+<h3 id="编译图与运行时配置">コンパイルと実行設定</h3>
+<p>Compile は Builder を実行可能グラフにし、構造を検査して Checkpointer、Store、Breakpoint などを結び付けます。モデル学習や機械語への変換ではありません。通常はプロセス起動時に一度作り、要求ごとにグラフや DB 接続を再構築しません。</p>
+<h3 id="状态-schema-的校验与开销">Schema の検証と負荷</h3>
+<p><code>TypedDict</code> は軽量、Dataclass は既定値、Pydantic はより強い実行時検証・型変換を提供しますが負荷も増えます。性能と検証要件で選びます。ノード出力、ツール結果、古い Checkpoint には業務検証も必要で、型注釈だけでは不正データを防げません。</p>
+<h3 id="reducer-定义状态合并语义">Reducer が統合の意味を決める</h3>
+<p>Reducer は既存値と更新値を統合します。指定しなければ通常は上書きで、リストなどには追加、重複除去、ID 更新を定義できます。決定性と順序依存を考え、同じ項目への並行更新に適切な統合規約を与えます。</p>
+<h3 id="消息合并需要识别身份与删除">メッセージには同一性と削除の扱いが必要</h3>
+<p>リスト連結だけでは ID による置換や削除を扱えません。メッセージ Reducer は復元、追加、置換、<code>RemoveMessage</code> などを扱います。Streaming の呼び出し、人の履歴修正、文脈圧縮ではこの違いが重要です。</p>
+<h2 id="路由并行与终止条件">経路、並行処理、終了条件</h2>
+<h3 id="路由边与-command-的适用边界">Conditional Edge と Command</h3>
+<p>Conditional Edge は独立した関数で経路を選び、<code>Command</code> は状態更新と <code>goto</code> を一緒に返します。純粋な経路選択は Edge、結果と更新が強く結び付く場合は Command が適します。全ノードが自由に跳ぶ設計は制御を見えにくくします。</p>
+<h3 id="send-与动态任务展开">Send と動的な展開</h3>
+<p><code>Send</code> は実行時に下流タスクを増やし、Map-Reduce などに使います。展開数、並行数、Timeout、集約サイズを制限します。ユーザー入力による無制限な展開は資源と費用を使い尽くす原因になります。</p>
+<h3 id="super-step-的并行执行模型">Super-step の並行実行</h3>
+<p>Pregel に似た基盤では、同じ Super-step 内の独立した有効タスクを実行し、更新を統合して次を選びます。二本の辺がコード順の直列実行を意味するわけではありません。暗黙の依存や並行安全でない副作用を避けます。</p>
+<h3 id="并行写入的冲突与确定性合并">書き込み競合と決定的な合流</h3>
+<p>異なる項目は別々に更新できますが、同じ項目には対応する Reducer が必要です。なければ競合エラーになり得ます。項目を分ける、適切な Reducer を定義する、ID 付き結果を Join Node で統合する、明示的に直列化する方法があります。</p>
+<h3 id="用多层预算限制循环">複数の予算でループを制限する</h3>
+<p>グラフのステップ・再帰上限、ツール回数、時間・Token・費用、同じ呼び出しの反復、無進捗、終了・失敗状態を管理します。上限では内部例外だけを返さず、説明可能な途中結果や人への引き継ぎを用意します。</p>
+<h2 id="执行轨迹与记忆">実行履歴と記憶</h2>
+<h3 id="threadcheckpoint-与持久化组件">Thread、Checkpoint、永続化部品</h3>
+<p>Checkpointer は保存と読込を担い、Thread は <code>thread_id</code> で識別する実行・会話です。Checkpoint は状態、次ノード、タスク、付随情報を含みます。同じ ID は同じ会話を継続し、新 ID は新状態を作ります。本番ではユーザー・Tenant の所有権も検証します。</p>
+<h3 id="执行快照与跨会话数据">実行スナップショットと会話横断データ</h3>
+<p>Checkpointer は短期記憶、復旧、人の介入、Time Travel に使う Thread 状態を保存し、Store は会話をまたぐ好みや事実を保存します。呼び出し済みツールは状態、回答言語の好みは Store が例です。長期情報には出典、更新時刻、権限、削除が必要です。</p>
+<h3 id="短期记忆长期事实与数据生命周期">記憶のライフサイクル</h3>
+<p>短期記憶は永続化したメッセージや状態項目、長期記憶は User/Namespace 単位の Store から取得します。多いほど良いわけではなく、保存の価値、許可、機密性、範囲、期限、削除方針を確認します。</p>
+<h3 id="完整历史与模型可见上下文">全履歴とモデルに見せる文脈</h3>
+<p>履歴を保存しても毎回すべてを入力する必要はありません。Token 数で切る、低価値の結果を除く、古い対話を要約する、長期事実を抽出する、履歴検索を使う方法があります。要約には欠落や誤りがあり得るので、監査記録、モデル文脈、長期記憶を分けます。</p>
+<h2 id="人工介入与故障恢复">人の介入と障害復旧</h2>
+<h3 id="人工介入的暂停与恢复协议">停止と再開のプロトコル</h3>
+<p><code>interrupt(payload)</code> は Checkpointer を通じて必要情報を保存し、直列化可能な内容を返します。人の入力後、同じ <code>thread_id</code> と <code>Command(resume=value)</code> で再呼び出しすると、その値が interrupt の戻り値になります。永続ストレージと安定 ID が前提です。承認には単なる同意ボタンではなく、操作概要、対象、引数を示します。</p>
+<h3 id="恢复时的节点重放与副作用">再開時のノード再実行と副作用</h3>
+<p>Interrupt を含むノードは先頭から再実行され、停止前のコードも再び動きます。メール、課金、DB 書き込みが重複し得ます。承認後へ移すか、永続 Task と冪等キー・一意制約で守ります。ローカル変数が中断したスタックとして残るとは考えません。</p>
+<h3 id="持久执行依赖幂等边界">永続実行には冪等な境界が必要</h3>
+<p>保存進捗から再開するには、非決定的な呼び出しと副作用を永続化できる Task/Node 境界へ置きます。開始済みで完了未確認のタスクは再実行され得るため、書き込み、支払い、送信には冪等キー、状態確認、トランザクショナル Outbox などが必要です。</p>
+<h3 id="并行步骤中的-pending-writes">並行段階の Pending Writes</h3>
+<p>一つの並行ノードが失敗しても、成功した兄弟の更新を Pending Writes として保存し、復旧時は失敗部分だけを再試行できます。ただし状態更新の完了と外部要求の処理完了は別であり、外部の冪等性は引き続き必要です。</p>
+<h3 id="历史回放分叉与状态更新">Replay、Fork、状態更新</h3>
+<p>Replay は古い Checkpoint より後を再実行し、Fork はそこから状態を変えて新しい経路を作ります。<code>update_state</code> は履歴自体を書き換えず、新 Checkpoint を作ります。前段結果は通常再利用され、後段の LLM、API、Interrupt は再実行されて変わり得ます。Time Travel では外部副作用を隔離するか冪等にします。</p>
+<h2 id="子图中的状态边界">サブグラフの状態境界</h2>
+<h3 id="子图的封装与持久化模式">カプセル化と永続化モード</h3>
+<p>Subgraph は再利用処理や Specialist をまとめます。参照文書では <code>None</code> は呼び出し単位で親の能力を継承し、<code>True</code> は Thread ごとの状態を保持、<code>False</code> は永続化を無効にして Interrupt や Durable Execution を使いません。不要な長期記憶は状態汚染や名前空間衝突を招くため、必要な箇所だけに与えます。</p>
+<h2 id="交付观测与安全">配信、観測、安全性</h2>
+<h3 id="流式事件与前端状态">Streaming イベントと画面状態</h3>
+<p><code>updates</code> は差分、<code>values</code> は全状態、<code>messages</code> は LLM の断片と情報、<code>custom</code> は業務進捗です。ほかに <code>checkpoints</code>、<code>tasks</code>、詳細な <code>debug</code> があり、前二者には Checkpointer が必要です。画面では Token、ツール状態、進捗を組み合わせ、内部思考過程ではなく公開可能な状況要約を配信します。</p>
+<h3 id="异步并发与流式交付的区别">非同期、並行、Streaming の違い</h3>
+<p>非同期は I/O 待ちの間に別処理を進め、並行は実行時間の重なり、Streaming は結果の逐次配信です。組み合わせつつ、Semaphore、接続プール、提供元制限、キュー、Backpressure を設けます。切断時に処理を取り消すかも明示します。</p>
+<h3 id="错误分类与局部恢复">エラー分類と局所復旧</h3>
+<p>一時的な通信・制限エラーはバックオフ、Schema・引数エラーは回数を限った修正、権限・業務規則エラーは再試行しない方針にします。未知障害は失敗状態か人の処理へ送ります。最小の安全単位で retry し、Timeout、原エラー、Trace を保持します。Fallback は能力互換を確認し、復旧前に副作用の発生を調べます。</p>
+<h3 id="从执行轨迹到分层评估">Trace から層別評価へ</h3>
+<p>モデル呼び出し、Prompt 版、ツールと結果、ノード経路、Token、遅延、エラー、必要情報を記録します。機密を伏せ、Tenant 情報は公開ラベルではなくアクセス制御に使います。</p>
+<p>最終正解だけでなく、ツールと引数、不要手順、RAG の召回・引用・根拠、構造化出力、人への適切な引き継ぎ、p50/p95 遅延、Token、費用、失敗、注入、越権、副作用を評価します。固定データで回帰を行い、運用 Trace と反応から新しい失敗を探します。LLM 判定器は人の例で校正し、唯一の正解にしません。</p>
+<h3 id="对检索工具与状态设置安全边界">検索、ツール、状態の安全境界</h3>
+<p>文書の Prompt Injection、越権ツール、引数注入、Tenant 間漏えい、機密 Trace、危険な retry、SSRF、SQL 注入、パストラバーサルが主なリスクです。モデル出力を信頼せず、Allowlist と厳密 Schema、実行時再認可、読書き権限の分離、高リスク操作の承認、権限付きキャッシュキー、文書と指示の分離、SQL/Shell/URL の決定的検証を使います。</p>
+<h2 id="验证实现的执行约定">実装の実行規約を確かめる</h2>
+<p>確認する項目は次のとおりです。</p>
+<ol>
+<li>State の項目と Reducer の理由。</li>
+<li>Thread ID とユーザー・会話の結び付け。</li>
+<li>保存先とプロセス再起動後の復旧。</li>
+<li>Interrupt 後に再実行するコードと冪等性。</li>
+<li>Tool の Schema、権限、Timeout、エラー。</li>
+<li>並行分岐の統合と競合。</li>
+<li>画面へ送るイベントと切断処理。</li>
+<li>ループ、Token、費用、並行数の上限。</li>
+<li>誤った呼び出しを追える Trace。</li>
+<li>公開前の回帰データと指標。</li>
+</ol>
+<p>不具合では入力、失敗した段階、Prompt/Tool/State/Reducer/権限/モデルのどこが原因か、修正、再発防止例を具体的に残します。</p>
+<p>次の境界が復旧と権限設計の基礎になります。</p>
+<pre><code class="language-text">Tool Call ≠ Tool Execution
+State ≠ Runtime Context ≠ Store
+Checkpointer ≠ Long-term Store
+Interrupt Resume ≠ 从断点下一行继续
+可计算/可重试 ≠ 副作用可安全重放
+</code></pre>
+<h2 id="参考资料">参考資料</h2>
+<ul>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api" target="_blank" rel="noopener noreferrer">Graph API</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/persistence" target="_blank" rel="noopener noreferrer">Persistence</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/interrupts" target="_blank" rel="noopener noreferrer">Interrupts</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/add-memory" target="_blank" rel="noopener noreferrer">Memory</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/streaming" target="_blank" rel="noopener noreferrer">Streaming</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/functional-api" target="_blank" rel="noopener noreferrer">Functional API / Durable Execution</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-subgraphs" target="_blank" rel="noopener noreferrer">Subgraphs</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel" target="_blank" rel="noopener noreferrer">Time Travel</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/observability" target="_blank" rel="noopener noreferrer">Observability</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/test/evals" target="_blank" rel="noopener noreferrer">Agent Evaluation</a></li>
+</ul></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#agent">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/agent/langchain"><small>← 前の記事</small><span>LangChain：コンポーネントの境界を明確にして LLM アプリを作る</span></a><span></span></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#状态与更新协议">状態と更新の規約</a></li><li><a href="#路由并行与终止条件">経路、並行処理、終了条件</a></li><li><a href="#执行轨迹与记忆">実行履歴と記憶</a></li><li><a href="#人工介入与故障恢复">人の介入と障害復旧</a></li><li><a href="#子图中的状态边界">サブグラフの状態境界</a></li><li><a href="#交付观测与安全">配信、観測、安全性</a></li><li><a href="#验证实现的执行约定">実装の実行規約を確かめる</a></li><li><a href="#参考资料">参考資料</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

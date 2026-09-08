@@ -1,0 +1,155 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>二分探索：答えが存在し得る区間を残す · 韋 君豪</title><meta name="description" content="## 答えを含み得る区間を残す"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/binary-search/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/binary-search/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/binary-search/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/binary-search/"><meta property="og:title" content="二分探索：答えが存在し得る区間を残す · 韋 君豪"><meta property="og:description" content="## 答えを含み得る区間を残す"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/binary-search/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/binary-search" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/binary-search" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/binary-search" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>二分探索：答えが存在し得る区間を残す</h1><p class="article-description">## 答えを含み得る区間を残す</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 7 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="二分保留的是可能包含答案的区间">答えを含み得る区間を残す</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/9b0d022f551ff81449fa.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="二分探索：答えが存在し得る区間を残す: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/9b0d022f551ff81449fa.svg" alt="二分探索：答えが存在し得る区間を残す: 仕組みの図（原文のラベル）" width="944" height="804" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ A["搜索第一个真：半开区间 [l, r)"] --> B{"l 小于 r？"}
+ B -->|否| Z["返回 l；等于 n 表示不存在"]
+ B -->|是| M["mid = l + (r-l) // 2"]
+ M --> C{"条件在 mid 成立？"}
+ C -->|是| D["r = mid，保留最左的真"]
+ C -->|否| E["l = mid + 1，排除左侧假值"]
+ D --> B
+ E --> B
+</code></pre></details></div>
+<p>図では「条件を満たす最初の位置を探す」という規約を使っています。別の問題では判定条件と区間の境界を定義し直す必要があり、更新式をそのまま流用することはできません。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<p>候補に順序を付け、一度の判定で答えが片側にしか存在しないと証明できるとき、二分探索が使えます。典型例は、条件が偽から真へ一度だけ変わる場合です。「この候補は大きすぎるので、それ以上もすべて不適切」と説明できる場合も同様です。</p>
+<ul>
+<li><strong>回転した配列の最小値：</strong> 重複がなければ、<code>nums[i] &#x3C;= nums[-1]</code> は大きい値の区間で偽、小さい値の区間で真になります。最初の真を探します。回転していない場合はすべて真です。</li>
+<li><strong>二つのソート済み配列の中央値：</strong> 短い方の配列の分割位置を二分探索します。左側に取る個数が少なすぎれば右へ、多すぎれば左へ動かします。両配列が内部で整列済みであることが根拠です。</li>
+</ul>
+<h2 id="把状态和不变量想清楚">状態と不変条件を明確にする</h2>
+<p>本質は中央の値を見ることではなく、探索空間の半分を除ける単調な条件を見つけることです。ループの前に区間の意味を定めます。境界を更新するときは、<code>mid</code> 自体が答えになり得るかを判断し、残すか除外するかを決めます。</p>
+<h2 id="教学骨架">学習用の骨格</h2>
+<p>最初の例は、単調な条件を満たす最初の位置を探します。<code>check(i)</code> の結果が <code>False, ..., False, True, ..., True</code> となるように問題に合わせて実装します。戻り値 <code>n</code> は、該当する位置がないことを表します。</p>
+<pre><code class="hljs language-python">left, right = <span class="hljs-number">0</span>, n  <span class="hljs-comment"># 答案在 [left, right]，n 是未找到的哨兵</span>
+<span class="hljs-keyword">while</span> left &#x3C; right:
+    mid = (left + right) // <span class="hljs-number">2</span>
+    <span class="hljs-keyword">if</span> check(mid):
+        right = mid  <span class="hljs-comment"># mid 仍可能是第一个成立的位置</span>
+    <span class="hljs-keyword">else</span>:
+        left = mid + <span class="hljs-number">1</span>
+answer = left
+</code></pre>
+<p>二つ目は、制約を満たす分割位置を探す疑似コードです。</p>
+<pre><code class="language-text">在较短数组的所有分割位置 [0, m] 中搜索
+while left &#x3C;= right:
+    i = 中间分割位置
+    j = 要求的左半总长度 - i
+    if i 太小: left = i + 1
+    elif i 太大: right = i - 1
+    else: 根据分割两侧的边界值计算答案并返回
+</code></pre>
+<p>境界の更新は探索目標と対応させます。なぜ片側を捨てられるのかを先に説明し、その後で <code>mid</code> と <code>mid ± 1</code> を選びます。</p>
+<h2 id="例题一寻找旋转排序数组中的最小值">例1：回転したソート済み配列の最小値</h2>
+<p>問題：<a href="https://leetcode.cn/problems/find-minimum-in-rotated-sorted-array/" target="_blank" rel="noopener noreferrer">LeetCode 153</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findMin</span>(<span class="hljs-params">self, nums: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># 旋转后的数组是两段升序数组[A, B]构成，其中A的所有元素都大于B的任何元素（注意，如果没旋转则只有一段）；</span>
+        <span class="hljs-comment"># 因此，最小值一定是B的第一个元素（如果没旋转则是A的第一个）</span>
+        <span class="hljs-comment"># 所以用二分查找去找到分界点即可！</span>
+            <span class="hljs-comment"># mid > nums[-1]：m还在A，最小在右半； mid &#x3C; nums[-1]：m在B，最小在左半；不停缩小最小区间即可</span>
+        l, r = <span class="hljs-number">0</span>, <span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">1</span>
+
+        <span class="hljs-keyword">while</span> l &#x3C; r:
+            m = (l + r) // <span class="hljs-number">2</span>
+            <span class="hljs-keyword">if</span> nums[m] > nums[-<span class="hljs-number">1</span>]:
+                l = m + <span class="hljs-number">1</span>
+            <span class="hljs-keyword">else</span>: r = m <span class="hljs-comment"># 为什么保留m而不是m-1？因为m自己可能就是最小值</span>
+        <span class="hljs-keyword">return</span> nums[l]
+</code></pre>
+<p><strong>実装のポイント：</strong> 末尾の要素との比較で、<code>mid</code> が大きい値の区間と小さい値の区間のどちらにあるかを判定します。<code>nums[m] > nums[-1]</code> なら最小値は右側です。それ以外では <code>m</code> 自体が最小値の可能性があるため、<code>r = m</code> とします。</p>
+<h2 id="例题二寻找两个正序数组的中位数困难">例2：二つのソート済み配列の中央値（Hard）</h2>
+<p>問題：<a href="https://leetcode.cn/problems/median-of-two-sorted-arrays/" target="_blank" rel="noopener noreferrer">LeetCode 4</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findMedianSortedArrays</span>(<span class="hljs-params">self, nums1: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>], nums2: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">float</span>:
+        <span class="hljs-comment"># 核心思想很简单，对两个数组找分界线，使得分界线满足下面要求，然后这两分界线的位置刚好对应中位即可。</span>
+        <span class="hljs-comment"># merged = nums1 + nums2</span>
+        <span class="hljs-comment"># merged.sort()</span>
+
+        <span class="hljs-comment"># mid = (len(merged) - 1) // 2</span>
+        <span class="hljs-comment"># return merged[mid] if len(merged) % 2 else (merged[mid] + merged[mid + 1]) / 2</span>
+    
+        <span class="hljs-string">"""
+        问题理解:
+        首先，我们需要明确什么是中位数：对于一个有序数组，如果长度是奇数，中位数就是中间那个数；如果是偶数，中位数是中间两个数的平均值。
+        对于两个有序数组，我们需要找到合并后的有序数组的中位数。直接合并再找中位数的时间复杂度是O(m+n)，不符合题目要求。我们需要更高效的O(log(min(m,n)))的解法。
+
+        核心思路：二分查找分割线
+        我们可以将问题转化为在两个数组中寻找合适的分割线，使得分割线左边的所有元素都小于等于右边的所有元素，并且左右两边的元素数量相等或左边多一个。
+        具体来说：
+        我们需要在较短的数组上进行二分查找（为了优化时间复杂度）
+        对于每个可能的分割位置，计算另一个数组的对应分割位置（见下）
+        检查分割线是否满足条件（左边最大值 ≤ 右边最小值）
+        根据比较结果调整二分查找的范围
+
+        详细步骤:
+        确保第一个数组是较短的：这样我们可以将时间复杂度优化到O(log(min(m,n)))
+        定义分割线：分割线将数组分为左右两部分
+        对于数组A，分割线在i的位置，左边有i个元素，右边有m-i个元素
+        对于数组B，分割线在j的位置，左边有j个元素，右边有n-j个元素
+
+        理想分割条件：
+        i + j = (m + n + 1) / 2（确保左边元素数量足够）
+        A[i-1] ≤ B[j] 且 B[j-1] ≤ A[i]（左边最大值 ≤ 右边最小值）
+
+        二分查找过程：
+        初始化二分查找范围：iMin = 0, iMax = m
+        计算i = (iMin + iMax) / 2
+        计算j = (m + n + 1) / 2 - i
+        根据比较结果调整iMin或iMax
+        """</span>
+        <span class="hljs-comment"># 确保nums1是较短的数组</span>
+        <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(nums1) > <span class="hljs-built_in">len</span>(nums2):
+            nums1, nums2 = nums2, nums1
+        
+        m, n = <span class="hljs-built_in">len</span>(nums1), <span class="hljs-built_in">len</span>(nums2)
+        imin, imax, half_len = <span class="hljs-number">0</span>, m, (m + n + <span class="hljs-number">1</span>) // <span class="hljs-number">2</span>
+        
+        <span class="hljs-keyword">while</span> imin &#x3C;= imax:
+            i = (imin + imax) // <span class="hljs-number">2</span>
+            j = half_len - i
+            
+            <span class="hljs-comment"># 处理边界情况</span>
+            <span class="hljs-keyword">if</span> i &#x3C; m <span class="hljs-keyword">and</span> nums2[j-<span class="hljs-number">1</span>] > nums1[i]:
+                <span class="hljs-comment"># i太小，需要增大</span>
+                imin = i + <span class="hljs-number">1</span>
+            <span class="hljs-keyword">elif</span> i > <span class="hljs-number">0</span> <span class="hljs-keyword">and</span> nums1[i-<span class="hljs-number">1</span>] > nums2[j]:
+                <span class="hljs-comment"># i太大，需要减小</span>
+                imax = i - <span class="hljs-number">1</span>
+            <span class="hljs-keyword">else</span>:
+                <span class="hljs-comment"># 找到合适的分割线，处理中位数计算</span>
+                
+                <span class="hljs-comment"># 计算左半部分最大值</span>
+                <span class="hljs-keyword">if</span> i == <span class="hljs-number">0</span>:
+                    max_of_left = nums2[j-<span class="hljs-number">1</span>]
+                <span class="hljs-keyword">elif</span> j == <span class="hljs-number">0</span>:
+                    max_of_left = nums1[i-<span class="hljs-number">1</span>]
+                <span class="hljs-keyword">else</span>:
+                    max_of_left = <span class="hljs-built_in">max</span>(nums1[i-<span class="hljs-number">1</span>], nums2[j-<span class="hljs-number">1</span>])
+                
+                <span class="hljs-comment"># 如果总数是奇数，直接返回左半部分最大值</span>
+                <span class="hljs-keyword">if</span> (m + n) % <span class="hljs-number">2</span> == <span class="hljs-number">1</span>:
+                    <span class="hljs-keyword">return</span> max_of_left
+                
+                <span class="hljs-comment"># 计算右半部分最小值</span>
+                <span class="hljs-keyword">if</span> i == m:
+                    min_of_right = nums2[j]
+                <span class="hljs-keyword">elif</span> j == n:
+                    min_of_right = nums1[i]
+                <span class="hljs-keyword">else</span>:
+                    min_of_right = <span class="hljs-built_in">min</span>(nums1[i], nums2[j])
+                
+                <span class="hljs-comment"># 如果是偶数，返回平均值</span>
+                <span class="hljs-keyword">return</span> (max_of_left + min_of_right) / <span class="hljs-number">2.0</span>
+</code></pre>
+<h3 id="题目思路">分割の考え方</h3>
+<p>配列を実際に結合せず、それぞれに区切りを置きます。左右の総要素数を同じにするか、左を一つだけ多くし、同時に次を満たします。</p>
+<pre><code class="language-text">nums1[i - 1] &#x3C;= nums2[j]
+nums2[j - 1] &#x3C;= nums1[i]
+</code></pre>
+<p>短い配列の分割位置 <code>i</code> だけを二分探索し、もう一方は <code>j = half_len - i</code> で決まります。</p>
+<ul>
+<li><code>nums2[j - 1] > nums1[i]</code>：<code>i</code> が小さすぎるため右へ移動します。</li>
+<li><code>nums1[i - 1] > nums2[j]</code>：<code>i</code> が大きすぎるため左へ移動します。</li>
+<li>どちらでもなければ正しい分割です。総要素数が奇数なら左側の最大値、偶数なら左側の最大値と右側の最小値の平均を取ります。</li>
+</ul>
+<p>区切りが配列の端になる場合があるため、<code>i == 0</code>、<code>j == 0</code>、<code>i == m</code>、<code>j == n</code> を個別に処理します。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/backtracking"><small>← 前の記事</small><span>バックトラッキング：選択・探索・取り消し</span></a><a href="/ja/blog/algorithm/binary-tree"><small>次の記事 →</small><span>二分木：再帰の戻り値を定義する</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#二分保留的是可能包含答案的区间">答えを含み得る区間を残す</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#把状态和不变量想清楚">状態と不変条件を明確にする</a></li><li><a href="#教学骨架">学習用の骨格</a></li><li><a href="#例题一寻找旋转排序数组中的最小值">例1：回転したソート済み配列の最小値</a></li><li><a href="#例题二寻找两个正序数组的中位数困难">例2：二つのソート済み配列の中央値（Hard）</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

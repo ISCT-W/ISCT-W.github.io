@@ -1,0 +1,105 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LangChain：コンポーネントの境界を明確にして LLM アプリを作る · 韋 君豪</title><meta name="description" content="すべてのアプリに自律的な計画を行う Agent が必要なわけではありません。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/agent/langchain/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/langchain/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/langchain/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/langchain/"><meta property="og:title" content="LangChain：コンポーネントの境界を明確にして LLM アプリを作る · 韋 君豪"><meta property="og:description" content="すべてのアプリに自律的な計画を行う Agent が必要なわけではありません。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/agent/langchain/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/langchain" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/agent/langchain" lang="en" hrefLang="en">EN</a><a href="/ja/blog/agent/langchain" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#agent">エージェント応用</a></nav><header class="article-header"><p class="eyebrow ">AGENT / 学習ノート</p><h1>LangChain：コンポーネントの境界を明確にして LLM アプリを作る</h1><p class="article-description">すべてのアプリに自律的な計画を行う Agent が必要なわけではありません。</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 12 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>すべてのアプリに自律的な計画を行う Agent が必要なわけではありません。単発呼び出し、固定検索フロー、モデルが選ぶツールループでは、複雑さと失敗の仕方が異なります。LangChain はモデル、メッセージ、ツール、検索部品を提供しますが、抽象化は状態、復旧要件、保守負担に合わせて選びます。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/b6a4231d87b0f1e85c77.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="LangChain：コンポーネントの境界を明確にして LLM アプリを作る: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/b6a4231d87b0f1e85c77.svg" alt="LangChain：コンポーネントの境界を明確にして LLM アプリを作る: 仕組みの図（原文のラベル）" width="1223" height="712" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+    I["应用任务与执行约束"] --> C{"执行路径是否预先确定"}
+    C -->|"是"| W["Prompt、Model、Parser 等组件串联"]
+    C -->|"模型需要选择动作"| A["Agent 模型与工具循环"]
+    W --> O["校验结果、评估质量与成本"]
+    A --> O
+    I --> P{"是否需要持久化、审批或复杂分支"}
+    P -->|"是"| G["用 LangGraph 显式组织状态与执行"]
+    P -->|"否"| S["选择足够简单的 SDK 或组件组合"]
+</code></pre></details></div>
+<p>部品の再利用、モデルの判断、永続実行は異なる要件です。固定フローでも同じ部品を使えますが、複雑な状態管理をモデル呼び出しの追加だけで代替することはできません。</p>
+<p>本記事は 2026 年 8 月の公式 Python 文書に基づきます。API は変化するため、利用時には言語、版、モジュールを確認してください。</p>
+<h2 id="先确定抽象解决的问题">抽象化が解く問題を先に定める</h2>
+<h3 id="组件抽象与状态运行时的分工">コンポーネントと状態実行基盤の分担</h3>
+<p>LangChain はモデル、メッセージ、ツール、Retriever、Prompt、Middleware、構造化出力、Agent の高水準部品を提供します。LangGraph は State、Node、Edge を中心に、分岐、ループ、永続化、停止・再開、長い処理、人の介入を扱います。</p>
+<p><code>create_agent</code> 自体も LangGraph 上で動作します。競合する選択肢ではなく、LangChain の部品を必要に応じて明示的なグラフで編成できます。単発の Prompt→Model→Parser には通常グラフは不要で、承認、復旧、検証ループ、複数の決定的段階で価値が高まります。</p>
+<h3 id="有状态编排的成本与收益">状態を持つ実行基盤の費用と利点</h3>
+<p>分岐とループは Python だけでも書けます。LangGraph の価値は図を描くことより、更新、並行マージ、チェックポイント、Thread 復旧、Interrupt、Streaming、観測可能な実行を共通プロトコルで扱えることです。</p>
+<p>短く復旧不要なら通常コードが簡単です。数分から数時間のタスク、人の承認、途中再開、履歴確認、並行ノードが必要なら、自作基盤の負担を減らせます。</p>
+<h3 id="保持简单实现的条件">単純な実装を保てる条件</h3>
+<p>数個の固定関数で足りる、極低遅延が必要、業務フローを決定的にしたい、SDK の一部しか使わない、抽象化が重要な機能やエラーを隠す、といった場合は導入しない選択もあります。履歴書のキーワードではなく、複雑さ、交換可能性、復旧、観測の要件で判断します。</p>
+<h2 id="工作流与-agent-的执行方式">Workflow と Agent の実行方式</h2>
+<h3 id="固定工作流与运行时动作选择">固定経路と実行時の行動選択</h3>
+<p>Chain は開発者が主に経路を定め、Agent はモデルがツール選択、追加処理、終了を判断します。前者はテスト、遅延、費用を予測しやすく、後者は意図や手順数が変わる問題に向きます。外側を決定的 Workflow、局所を Agent にする構成も一般的です。</p>
+<p>LLM を一度呼ぶだけで Agent とはいえません。モデルによる行動選択または反復判断が区別の要点です。</p>
+<h3 id="模型工具与观察构成的执行循环">モデル、ツール、観測のループ</h3>
+<p>メッセージとツールをモデルへ渡すと、最終回答か Tool Call が返ります。実行基盤が検証してツールを実行し、結果を履歴へ加え、完了または停止条件まで判断を繰り返します。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/474fdbde739a863d60bf.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="LangChain：コンポーネントの境界を明確にして LLM アプリを作る: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/474fdbde739a863d60bf.svg" alt="LangChain：コンポーネントの境界を明確にして LLM アプリを作る: 仕組みの図（原文のラベル）" width="499" height="547" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart LR
+    U["User message"] --> M["Model"]
+    M -->|"final answer"| E["End"]
+    M -->|"tool call"| V["Schema / policy validation"]
+    V --> T["Tool execution"]
+    T --> R["Tool result message"]
+    R --> M
+</code></pre></details></div>
+<p>本番ではステップ、Token、時間、並行ツール数、副作用の権限を制限し、無限ループや費用増大を防ぎます。</p>
+<h2 id="组合并发与交付方式">合成、並行処理、結果の配信</h2>
+<h3 id="用-runnable-组合工作单元">Runnable で処理単位を組み合わせる</h3>
+<p>LCEL は <code>|</code> などで実行部品をつなぐ表現です。基礎となる <code>Runnable</code> は呼び出し、バッチ、Streaming、非同期、合成に対応します。</p>
+<pre><code class="hljs language-python">chain = prompt | model | parser
+</code></pre>
+<p><code>RunnableSequence</code> は出力を順に渡し、<code>RunnableParallel</code> は同じ入力で独立分岐を並行実行します。明確なデータフローは LCEL、複雑なループや状態分岐、復旧は LangGraph が適します。</p>
+<h3 id="同步异步批处理与流式接口">同期、非同期、バッチ、ストリーミング</h3>
+<p><code>invoke</code> は単一入力の同期、<code>ainvoke</code> は I/O 向きの非同期呼び出しです。<code>batch/abatch</code> は独立入力群を扱い、スレッドプール、<code>asyncio.gather</code>、連携先のネイティブバッチなどを使います。<code>stream/astream</code> は逐次配信で体感遅延を改善しますが、総計算量を自動的には減らしません。</p>
+<p>Timeout、取消、並行数、Backpressure、例外集約も必要です。async だけでスループット向上は保証されません。</p>
+<h3 id="串行依赖与并行分支">依存する直列処理と独立した並行分岐</h3>
+<p>検索してから回答する処理は直列です。要約とキーワード抽出などは並行化できます。ただし瞬間 QPS、Rate Limit、結果統合、部分失敗への対処が増え、同じ外部資源へ書く場合は並行安全性も必要です。</p>
+<h3 id="把重试放在最小安全边界">再試行を最小の安全な境界に置く</h3>
+<p>一時的な API 失敗など、再実行が安全な単位で retry し、Agent 全体を無条件にやり直しません。Fallback は利用不能なモデル、検索器、提供元を代替します。</p>
+<p>非冪等な書き込みは無条件 retry できず、引数・権限などの恒久エラーも指数バックオフ対象ではありません。代替モデルはツール、文脈長、構造化出力が異なる場合があります。再試行は末尾遅延と費用を増やすため、予算と遮断条件を設けます。</p>
+<h2 id="提示消息与上下文">Prompt、メッセージ、コンテキスト</h2>
+<h3 id="提示模板中的角色与数据边界">テンプレートの役割とデータ境界</h3>
+<p><code>PromptTemplate</code> は文字列、<code>ChatPromptTemplate</code> は System/Human/AI/Tool の役割付き列を作ります。境界は指示優先度、キャッシュ、Tool Calling に影響します。変数は信頼できる指示ではありません。ユーザーデータを明示的な位置に入れ、文字列連結でシステム指示に見せかけない設計が必要です。</p>
+<h3 id="保留消息的结构与调用关系">構造とツール呼び出しの対応を残す</h3>
+<p>Message は文字列に加え、役割、Tool Call と ID、構造化 Content、応答情報、Token Usage を持ちます。<code>AIMessage.tool_calls</code> と <code>ToolMessage.tool_call_id</code> の対応が必要です。全履歴を文字列化すると、役割、呼び出し関係、マルチモーダル構造、提供元間の共通形式が失われます。</p>
+<h3 id="stateruntime-context-与-store-的职责">State、Runtime Context、Store</h3>
+<p>State はメッセージや中間結果など更新される実行データです。Runtime Context はユーザー ID、DB 接続、依存オブジェクトを注入します。Store は Thread をまたぐ好み、記憶、事実を保存します。</p>
+<p>接続を State に入れると直列化が難しく、秘密を Checkpoint に保存すると漏えいにつながります。業務 DB を丸ごと Store に複製すれば二重書き込みと整合性の問題が生じます。</p>
+<h2 id="工具与运行时扩展">ツールと実行時の拡張</h2>
+<h3 id="工具的职责输入与返回协议">ツールの責務、入力、返却形式</h3>
+<p>良いツールは単一の目的、安定した名前、正確な説明、厳密な Schema、一貫した出力とエラーを持ちます。モデルの選択は名前、説明、引数定義に強く依存します。</p>
+<p>列挙値、範囲、業務 ID を検証し、実行内で認証・認可を再確認します。Timeout、retry、結果サイズを制限し、書き込みには冪等キー、承認、Dry Run を用います。生のスタックではなく安定したエラー型を返します。</p>
+<h3 id="调用意图与执行权的分离">意図の生成と実行権限を分ける</h3>
+<p>Tool Calling は名前と引数を持つ要求であり、実行は検証後のアプリが行います。ユーザー、Tenant、資源 ID、承認状態、引数を実行境界で確認します。Schema に項目がないだけで越権を防げるわけではありません。</p>
+<h3 id="用-middleware-集中处理横切逻辑">Middleware で横断的な処理をまとめる</h3>
+<p>モデル・ツール前後の Hook で動的選択、ログ、retry、fallback、速度制限、PII 検出、Guardrail、要約、人の介入を扱えます。ただし重要な業務状態遷移を隠してはいけません。順序を記録して各層を検証し、過剰な Hook でエラー伝播を不透明にしないことが大切です。</p>
+<h3 id="按权限和阶段选择可用工具">権限と段階で利用可能ツールを選ぶ</h3>
+<p>静的ツールは作成時に固定され、単純で検証しやすい構成です。動的ツールは権限、段階、文脈、モデル能力で絞り、選択肢と露出を減らします。ただし非表示は実行時認可の代わりにはなりません。頻繁な変更は Prompt Cache や挙動の安定性にも影響します。</p>
+<h2 id="结构化结果与检索组件">構造化結果と検索部品</h2>
+<h3 id="供应商约束与工具策略的结构化输出">提供元の制約とツール方式</h3>
+<p><code>ProviderStrategy</code> はネイティブ構造化出力、<code>ToolStrategy</code> は Tool Calling を使います。<code>create_agent(response_format=Schema)</code> は能力に応じて選択します。どちらでも検証失敗、複数出力、retry 上限、業務意味を扱う必要があります。Schema を通っても内容が正しいとは限りません。</p>
+<h3 id="语法约束之后仍需要业务校验">構文の後にも業務検証が必要</h3>
+<p>利用できればネイティブ構造化出力、次に Tool Calling、最後に自由文 JSON/正規表現解析を検討します。自由文は Markdown、説明、途中切断に弱い方式です。日付の実在、ID の存在、金額上限は決定的な業務検証で確認します。</p>
+<h3 id="检索组件的离线与在线链路">オフラインとオンラインの検索経路</h3>
+<p>オフラインでは読み込み、洗浄・解析、分割、Embedding、索引化を行います。オンラインでは質問理解、Retriever/混合検索、再順位付け・圧縮、文脈構成、生成、引用検証を行います。部品交換が容易でも RAG 品質は保証されず、召回、順位、文脈利用、根拠との一致を分けて評価します。</p>
+<h3 id="retriever-接口与向量存储">Retriever と Vector Store</h3>
+<p>Vector Store はベクトル保存・検索を担い、Retriever は Query から Document 列を返す広いインターフェースです。BM25、企業検索、Web、DB、複合検索も包めるため、Retriever 利用はベクトル DB や意味類似検索だけを意味しません。</p>
+<h3 id="固定检索agentic-rag-与混合流程">固定検索、Agentic RAG、混合フロー</h3>
+<p>2-Step RAG は先に検索して生成します。Agentic RAG はモデルが検索時機、ソース、質問書き換え、再検索を判断します。Hybrid RAG は権限フィルターと基本検索を必須にし、その後の深掘りを Agent に任せるなどの組み合わせです。</p>
+<p>根拠が必要な高リスク業務では、モデルの自主的検索だけに依存せず、必要な検索や DB 確認を強制し、裏付けがなければ回答を控えます。</p>
+<h3 id="按文档结构与评估选择分块">文書構造と評価で分割を選ぶ</h3>
+<p>細かな召回と十分な意味保持を両立する大きさが必要です。Overlap は境界損失を減らしますが、索引、重複、Context Token を増やします。コードは関数・クラス、Markdown は見出し、契約は条項、表は見出しとの関係を保ちます。一般文書は <code>RecursiveCharacterTextSplitter</code> を出発点に、回答を含むチャンクの召回、最終品質、費用で調整します。</p>
+<h2 id="技术选型落在实际执行需求上">実際の実行要件で技術を選ぶ</h2>
+<p>検索、検証、承認、実行、保存が明示的に分かれ、承認が要求をまたぎ、途中から復旧するなら、LangGraph の状態遷移と LangChain 部品が役立ちます。</p>
+<p>モデルとツールのループが中心なら、SDK の Streaming、フロント連携、保守負担に合う薄い実行基盤が適する場合もあります。図で表現することと、永続実行、Interrupt、複雑な分岐を実装することは別です。概念の類似ではなく実際の機能で比較します。</p>
+<h2 id="参考资料">参考資料</h2>
+<ul>
+<li><a href="https://docs.langchain.com/oss/python/langchain/agents" target="_blank" rel="noopener noreferrer">LangChain Agents</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/tools" target="_blank" rel="noopener noreferrer">Tools</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/middleware/overview" target="_blank" rel="noopener noreferrer">Middleware</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/structured-output" target="_blank" rel="noopener noreferrer">Structured Output</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/retrieval" target="_blank" rel="noopener noreferrer">Retrieval</a></li>
+<li><a href="https://reference.langchain.com/python/langchain-core/runnables" target="_blank" rel="noopener noreferrer">Core Runnables</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api" target="_blank" rel="noopener noreferrer">LangGraph Graph API</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/persistence" target="_blank" rel="noopener noreferrer">Persistence</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/interrupts" target="_blank" rel="noopener noreferrer">Interrupts</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/add-memory" target="_blank" rel="noopener noreferrer">Memory</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/streaming" target="_blank" rel="noopener noreferrer">Streaming</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/functional-api" target="_blank" rel="noopener noreferrer">Functional API / Durable Execution</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-subgraphs" target="_blank" rel="noopener noreferrer">Subgraphs</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel" target="_blank" rel="noopener noreferrer">Time Travel</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/observability" target="_blank" rel="noopener noreferrer">Observability</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/test/evals" target="_blank" rel="noopener noreferrer">Agent Evaluation</a></li>
+</ul></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#agent">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/agent/tool-calling"><small>← 前の記事</small><span>ツール呼び出し：モデルの意図と実行権限を分ける</span></a><a href="/ja/blog/agent/langgraph"><small>次の記事 →</small><span>LangGraph：状態、復旧、長時間処理の実行規約</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#先确定抽象解决的问题">抽象化が解く問題を先に定める</a></li><li><a href="#工作流与-agent-的执行方式">Workflow と Agent の実行方式</a></li><li><a href="#组合并发与交付方式">合成、並行処理、結果の配信</a></li><li><a href="#提示消息与上下文">Prompt、メッセージ、コンテキスト</a></li><li><a href="#工具与运行时扩展">ツールと実行時の拡張</a></li><li><a href="#结构化结果与检索组件">構造化結果と検索部品</a></li><li><a href="#技术选型落在实际执行需求上">実際の実行要件で技術を選ぶ</a></li><li><a href="#参考资料">参考資料</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

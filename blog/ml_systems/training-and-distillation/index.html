@@ -1,0 +1,92 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>训练稳定性与知识蒸馏：先定位数值问题，再验证能力迁移 · 韦君豪</title><meta name="description" content="分析残差、归一化、精度与数据引起的训练不稳定，展开不同蒸馏信号及目标函数，并检查教师偏差和学生能力退化。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/ml_systems/training-and-distillation/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/ml_systems/training-and-distillation/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/ml_systems/training-and-distillation/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/ml_systems/training-and-distillation/"><meta property="og:title" content="训练稳定性与知识蒸馏：先定位数值问题，再验证能力迁移 · 韦君豪"><meta property="og:description" content="分析残差、归一化、精度与数据引起的训练不稳定，展开不同蒸馏信号及目标函数，并检查教师偏差和学生能力退化。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/ml_systems/training-and-distillation/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/ml_systems/training-and-distillation" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/ml_systems/training-and-distillation" lang="en" hrefLang="en">EN</a><a href="/ja/blog/ml_systems/training-and-distillation" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#ml_systems">机器学习系统</a></nav><header class="article-header"><p class="eyebrow ">ML SYSTEMS / 学习笔记</p><h1>训练稳定性与知识蒸馏：先定位数值问题，再验证能力迁移</h1><p class="article-description">分析残差、归一化、精度与数据引起的训练不稳定，展开不同蒸馏信号及目标函数，并检查教师偏差和学生能力退化。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 4 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>训练损失出现异常与模型能力迁移失败，可能在表面上都表现为指标退化，但需要不同的诊断路径。前者要回到具体批次、激活、梯度和优化器状态；后者要检查教师信号、学生容量与数据覆盖。本文把数值稳定性和蒸馏分别展开，再用分层评估连接两者。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/7231b7c8b60507c63709.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="训练稳定性与知识蒸馏：先定位数值问题，再验证能力迁移: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/7231b7c8b60507c63709.svg" alt="训练稳定性与知识蒸馏：先定位数值问题，再验证能力迁移: 机制示意图" width="610" height="600" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart TD
+    A["训练出现 NaN、Inf 或 Loss Spike"] --> B["复现具体 step 与 batch"]
+    B --> C["检查数据、激活与梯度"]
+    C --> D["核对精度、优化器与分布式状态"]
+    D --> E["逐项调整并回测"]
+    T["教师输出、表示或生成样本"] --> S["学生蒸馏训练"]
+    S --> V["任务、长尾、安全与鲁棒性评估"]
+    V --> F["检查教师偏差与学生容量"]
+</code></pre></details></div>
+<p>两条链路对应不同问题：数值异常要求找出最先失真的计算或状态；蒸馏则要确认学生学到的内容以及遗漏的能力，不能只用训练损失或平均分数判断。</p>
+<h2 id="训练稳定性需要逐层定位">训练稳定性需要逐层定位</h2>
+<p>训练不稳定通常来自残差路径的激活/梯度尺度、初始化、归一化位置、学习率、混合精度溢出、异常数据或分布式通信。解决时应先定位 NaN/Inf 或 Loss Spike 出现在哪一层和哪一步，再从归一化、初始化、优化器、精度和数据逐层排查。</p>
+<h3 id="关键机制">关键机制</h3>
+<ol>
+<li>
+<p><strong>Pre-LN 与 Post-LN</strong><br>
+Pre-LN 将归一化放在 Attention/FFN 之前，残差主干更接近恒等映射，深层梯度通常更容易传播。Post-LN 可能获得不同表示性质，但对初始化和 Warmup 更敏感。</p>
+</li>
+<li>
+<p><strong>Norm 类型与位置是两个维度</strong><br>
+RMSNorm 是 LayerNorm 的替代形式，只使用均方根缩放；Pre-LN/Post-LN 描述归一化放在子层前还是后。不能把 RMSNorm 直接当作 Pre-LN 的同义词。</p>
+</li>
+<li>
+<p><strong>初始化与残差缩放</strong><br>
+权重过大会造成激活方差逐层积累。可以使用与深度相关的初始化、残差分支缩放、DeepNorm 或类似方案。</p>
+</li>
+<li>
+<p><strong>学习率与优化器</strong><br>
+Warmup 让优化器状态和表示在训练早期平稳建立；峰值学习率、Adam 的 β/ε、权重衰减和梯度裁剪也会影响稳定性。</p>
+</li>
+<li>
+<p><strong>数值精度</strong><br>
+FP16 指数范围较小，容易 overflow；BF16 通常更稳但尾数更短。需要监控 loss scale、梯度范数、激活最大值和非有限数。</p>
+</li>
+<li>
+<p><strong>数据与分布式因素</strong><br>
+异常长样本、极端 token 分布、错误 label、重复/污染数据，以及 All-Reduce 或 Checkpoint 恢复错误，都可能表现为 Loss Spike。</p>
+</li>
+</ol>
+<h3 id="排查顺序">排查顺序</h3>
+<pre><code class="language-text">复现具体 step
+→ 检查 batch/token/label
+→ 记录各层 activation 与 gradient norm
+→ 检查 AMP scale、NaN/Inf 和 optimizer state
+→ 降低学习率并验证 gradient clipping
+→ 对比单卡/小模型/FP32 基线
+→ 再排查并行通信与恢复逻辑
+</code></pre>
+<h2 id="从教师信号到学生模型">从教师信号到学生模型</h2>
+<p>蒸馏让 Student 学习 Teacher 的输出分布、中间表示或生成结果，而不是只学习硬标签。Teacher 的 soft target 包含类别间或 token 间的相对关系，可以把大模型能力压缩到更小模型中。</p>
+<h3 id="常见形式">常见形式</h3>
+<ol>
+<li><strong>Logit Distillation</strong></li>
+</ol>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msub><mi mathvariant="script">L</mi><mrow><mi>K</mi><mi>D</mi></mrow></msub><mo>=</mo><msup><mi>T</mi><mn>2</mn></msup><mtext> </mtext><msub><mi>D</mi><mrow><mi>K</mi><mi>L</mi></mrow></msub><mrow><mo fence="true">(</mo><mi mathvariant="normal">softmax</mi><mo>⁡</mo><mo stretchy="false">(</mo><msub><mi>z</mi><mi>t</mi></msub><mi mathvariant="normal">/</mi><mi>T</mi><mo stretchy="false">)</mo><mi mathvariant="normal">∥</mi><mi mathvariant="normal">softmax</mi><mo>⁡</mo><mo stretchy="false">(</mo><msub><mi>z</mi><mi>s</mi></msub><mi mathvariant="normal">/</mi><mi>T</mi><mo stretchy="false">)</mo><mo fence="true">)</mo></mrow></mrow><annotation encoding="application/x-tex">\mathcal L_{KD}=T^2\,D_{KL}
+\left(
+\operatorname{softmax}(z_t/T)
+\Vert
+\operatorname{softmax}(z_s/T)
+\right)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathcal">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em;"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0715em;">K</span><span class="mord mathnormal mtight" style="margin-right:0.0278em;">D</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:1.1141em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.1389em;">T</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8641em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0278em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em;"><span style="top:-2.55em;margin-left:-0.0278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0715em;">K</span><span class="mord mathnormal mtight">L</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.1667em;"></span><span class="minner"><span class="mopen delimcenter" style="top:0em;">(</span><span class="mop"><span class="mord mathrm">softmax</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.044em;">z</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2806em;"><span style="top:-2.55em;margin-left:-0.044em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.1389em;">T</span><span class="mclose">)</span><span class="mord">∥</span><span class="mspace" style="margin-right:0.1667em;"></span><span class="mop"><span class="mord mathrm">softmax</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.044em;">z</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.1514em;"><span style="top:-2.55em;margin-left:-0.044em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathnormal mtight">s</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">/</span><span class="mord mathnormal" style="margin-right:0.1389em;">T</span><span class="mclose">)</span><span class="mclose delimcenter" style="top:0em;">)</span></span></span></span></span></span>
+<p>温度 (T) 越高，分布越平滑，Student 可以看到非最大类别之间的关系。</p>
+<ol start="2">
+<li>
+<p><strong>Feature Distillation</strong><br>
+对齐 Attention map、Hidden State 或特定中间层表示。</p>
+</li>
+<li>
+<p><strong>Sequence-level Distillation</strong><br>
+Teacher 生成回答或推理轨迹，Student 用 SFT 学习；LLM 中常见 synthetic data distillation。</p>
+</li>
+<li>
+<p><strong>Preference/Behavior Distillation</strong><br>
+Student 学习 Teacher 的风格、拒答、安全或工具选择行为。</p>
+</li>
+</ol>
+<h3 id="风险与评估">风险与评估</h3>
+<ul>
+<li>Teacher 的偏差和幻觉会进入训练数据；</li>
+<li>Student 容量不足时会优先丢失长尾能力；</li>
+<li>合成数据缺乏多样性可能造成模式坍缩；</li>
+<li>只测平均 Benchmark 可能掩盖安全、校准和鲁棒性退化；</li>
+<li>使用闭源 Teacher 时还需考虑输出条款和数据授权。</li>
+</ul>
+<h2 id="参考资料">参考资料</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/1503.02531" target="_blank" rel="noopener noreferrer">Distilling the Knowledge in a Neural Network</a></li>
+<li><a href="https://arxiv.org/abs/2002.04745" target="_blank" rel="noopener noreferrer">On Layer Normalization in the Transformer Architecture</a></li>
+<li><a href="https://arxiv.org/abs/2203.00555" target="_blank" rel="noopener noreferrer">DeepNet: Scaling Transformers to 1,000 Layers</a></li>
+<li><a href="https://arxiv.org/abs/2305.13245" target="_blank" rel="noopener noreferrer">GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints</a></li>
+</ul>
+<p>参考了 <a href="https://zhuanlan.zhihu.com/p/2022080840163673941" target="_blank" rel="noopener noreferrer">Shard Zhang 对 LLM 相关问题的整理</a>，并围绕机制、适用条件与工程取舍展开。</p></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#ml_systems">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/ml_systems/lora"><small>← 上一篇</small><span>LoRA：低秩更新、量化底座与自适应预算</span></a><a href="/blog/ml_systems/normalization-methods"><small>下一篇 →</small><span>归一化方法：统计集合、残差位置与部署行为</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#训练稳定性需要逐层定位">训练稳定性需要逐层定位</a></li><li><a href="#从教师信号到学生模型">从教师信号到学生模型</a></li><li><a href="#参考资料">参考资料</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

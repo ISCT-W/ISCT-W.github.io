@@ -1,0 +1,198 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RAG: turn retrieved material into answers that can be checked · Junhao Wei</title><meta name="description" content="RAG lets a model use external knowledge that can be updated, but information can still be distorted at every stage between ingestion and delivery."><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/agent/rag/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/rag/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/rag/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/rag/"><meta property="og:title" content="RAG: turn retrieved material into answers that can be checked · Junhao Wei"><meta property="og:description" content="RAG lets a model use external knowledge that can be updated, but information can still be distorted at every stage between ingestion and delivery."><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/agent/rag/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/rag" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/agent/rag" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/agent/rag" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#agent">Agent applications</a></nav><header class="article-header"><p class="eyebrow ">AGENT / Study notes</p><h1>RAG: turn retrieved material into answers that can be checked</h1><p class="article-description">RAG lets a model use external knowledge that can be updated, but information can still be distorted at every stage between ingestion and delivery.</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 7 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>RAG lets a model use external knowledge that can be updated, but information can still be distorted at every stage between ingestion and delivery. Reliability requires more than retrieval recall or a link attached to an answer. Design sources, context organization, generation constraints, and citation verification separately, then trace failures to the stage responsible.</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/9582946cec0043592cf3.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="RAG: turn retrieved material into answers that can be checked: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/9582946cec0043592cf3.svg" alt="RAG: turn retrieved material into answers that can be checked: mechanism diagram (original labels)" width="591" height="931" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart TD
+    D["文档接入、解析与版本"] --> I["结构感知分块与索引"]
+    Q["用户问题"] --> P["权限与元数据范围"]
+    P --> R["混合检索"]
+    I --> R
+    R --> K["重排与上下文压缩"]
+    K --> E{"证据是否足以回答"}
+    E -->|"是"| G["生成回答并逐项绑定来源"]
+    G --> V["核对结论与引用的支持关系"]
+    E -->|"否"| U["澄清、换工具或返回未知"]
+</code></pre></details></div>
+<p>Retrieval is one part of the evidence chain. The checkpoints constrain accessible data, evidence admitted to context, and whether sources support the final claims. Results that do not contain an answer must not be presented as a confident conclusion.</p>
+<h2 id="幻觉来自哪一层">Where hallucinations come from</h2>
+<p>An LLM predicts the next token in a conditional distribution; it does not query an invariably correct fact database. Missing knowledge, ambiguous prompts, conflicting training data, poor use of long context, and decoding choices can all produce fluent unsupported answers. Mitigation must address sources, constraints, verification, and abstention—not temperature alone.</p>
+<h3 id="原因分类">Types of causes</h3>
+<ol>
+<li><strong>Model knowledge:</strong> The fact is absent, outdated, or inconsistent across sources.</li>
+<li><strong>Input:</strong> A false premise, unclear reference, or request beyond available context.</li>
+<li><strong>Generation objective:</strong> Pressure to answer without a learned stopping behavior when evidence is insufficient.</li>
+<li><strong>Context use:</strong> Evidence is too long, badly positioned, contradictory, or buried in irrelevant text.</li>
+<li><strong>Decoding:</strong> Greater randomness increases variation, but greedy or low-temperature decoding can also reproduce falsehoods consistently.</li>
+<li><strong>Tools and data:</strong> Search, OCR, a database, or an API may already have returned an incorrect result.</li>
+</ol>
+<h3 id="缓解方法">Mitigations</h3>
+<ul>
+<li>Supply updatable knowledge through RAG, databases, or business tools.</li>
+<li>Restrict candidate entities to a closed set and use structured identifiers.</li>
+<li>Attach citations to claims and verify that the evidence supports them.</li>
+<li>Use deterministic tools for numbers, dates, calculations, and permission-sensitive facts.</li>
+<li>Constrain output structure through schemas or constrained decoding.</li>
+<li>Add a verifier, self-consistency checks, or a second model’s review.</li>
+<li>Define an explicit <code>unknown</code> outcome for insufficient evidence or tool failure.</li>
+<li>Evaluate retrieval and generation separately.</li>
+</ul>
+<p>Lower temperature mainly reduces randomness. Chain-of-thought prompting may assist multistep reasoning, but neither guarantees factuality.</p>
+<h3 id="工程应用">Engineering application</h3>
+<p>One possible design derives citations from successful tool results, restricts character or asset candidates, and uses rule databases and geometric verification. High-risk facts then move from unconstrained text generation into a deterministic evidence protocol.</p>
+<h2 id="从检索到引用的失败链路">Failure paths from retrieval to citation</h2>
+<p>RAG adds external context to generation, but both retrieval and generation can fail. Missing the right document, separating conditions from conclusions during chunking, incorrect reranking, conflicting context, ignored evidence, and forced answers can all cause hallucinations.</p>
+<h3 id="失败链路">Failure chain</h3>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Typical failure</th>
+<th>Diagnostic metric</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ingestion</td>
+<td>OCR errors, lost table structure, stale versions</td>
+<td>Document coverage, parsing accuracy</td>
+</tr>
+<tr>
+<td>Chunking</td>
+<td>Split conditions and conclusions; inappropriate chunk size</td>
+<td>Retrievability of answer-bearing chunks</td>
+</tr>
+<tr>
+<td>Retrieval</td>
+<td>Query mismatch, semantic drift, no results after permission filtering</td>
+<td>Recall@k, MRR, empty-result rate</td>
+</tr>
+<tr>
+<td>Rerank</td>
+<td>Relevant documents demoted</td>
+<td>NDCG, top-k hits</td>
+</tr>
+<tr>
+<td>Context</td>
+<td>Excess length, conflict, lost-in-the-middle</td>
+<td>Context precision, positional ablations</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>Parametric memory overrides evidence; incorrect attribution</td>
+<td>Faithfulness, groundedness</td>
+</tr>
+<tr>
+<td>Citation</td>
+<td>A citation exists but does not support the claim</td>
+<td>Citation precision and recall</td>
+</tr>
+</tbody>
+</table>
+<h3 id="改进方式">Improvements</h3>
+<ul>
+<li>Query rewriting, multiple queries, metadata filters, and hybrid retrieval.</li>
+<li>Parent–child, sentence-window, or structure-aware chunking.</li>
+<li>Cross-encoder or LLM reranking.</li>
+<li>Checking that context contains an answer before generation.</li>
+<li>Claim-level citations with entailment checks.</li>
+<li>Showing sources and dates when evidence conflicts, rather than forcing agreement.</li>
+<li>Clarification, another tool, or abstention when retrieval is empty.</li>
+<li>Treating pages and documents as untrusted inputs and handling prompt injection.</li>
+</ul>
+<h2 id="把-rag-组织成可维护的系统">Organize RAG as a maintainable system</h2>
+<p>Enterprise RAG combines data, retrieval, generation, permissions, evaluation, and operations. Its core flow is:</p>
+<pre><code class="language-text">数据接入与版本
+→ 解析/OCR/清洗
+→ 结构感知分块
+→ Embedding + 关键词/结构化索引
+→ 权限与元数据过滤
+→ Query 理解/改写
+→ Hybrid Retrieval
+→ Rerank 与上下文压缩
+→ 生成、引用与拒答
+→ 评估、反馈和可观测性
+</code></pre>
+<h3 id="各层要点">Responsibilities by layer</h3>
+<h4 id="data">Data</h4>
+<ul>
+<li>Retain document owner, tenant, version, effective date, and permissions.</li>
+<li>Parse PDFs, tables, images, and code using suitable strategies.</li>
+<li>Deduplicate while preserving parent–child structure, sections, and page numbers.</li>
+<li>Update or remove index entries when documents change or are deleted.</li>
+</ul>
+<h4 id="index">Index</h4>
+<ul>
+<li>Dense embeddings capture semantic similarity.</li>
+<li>BM25 and keywords cover names, identifiers, and exact phrases.</li>
+<li>Structured fields support metadata filtering.</li>
+<li>Choose HNSW, IVF, or a managed vector store for the data scale.</li>
+<li>Version the index when upgrading the embedding model.</li>
+</ul>
+<h4 id="retrieval">Retrieval</h4>
+<ul>
+<li>Identify the question type and time range.</li>
+<li>Rewrite or decompose queries, or perform multi-hop retrieval.</li>
+<li>Fuse hybrid retrieval scores.</li>
+<li>Rerank with a cross-encoder or LLM.</li>
+<li>Deduplicate, compress context, and enforce a token budget.</li>
+</ul>
+<h4 id="generation">Generation</h4>
+<ul>
+<li>Specify which context must ground the answer.</li>
+<li>Bind each claim to a source.</li>
+<li>Clarify or return unknown when evidence is missing.</li>
+<li>Assign distinct trust levels to tool results and document text.</li>
+<li>Produce structured outputs when downstream code needs them.</li>
+</ul>
+<h4 id="platform">Platform</h4>
+<ul>
+<li>Enforce tenant isolation and document-level ACLs.</li>
+<li>Include user, project, and permission scope in cache keys.</li>
+<li>Record queries, retrieval, reranking, citations, tokens, latency, and errors.</li>
+<li>Improve with both offline reference sets and online feedback.</li>
+<li>Redact sensitive fields, maintain audit logs, and define retention policies.</li>
+</ul>
+<h2 id="证据质量与模型规模的取舍">Evidence quality versus model size</h2>
+<p>Once the right evidence is retrieved, generation may mostly involve extraction, summarization, rewriting, or structured output. A small model can sometimes do this with lower latency and cost. “Smaller models follow instructions better and hallucinate less” is not a general rule: results depend on context length, task difficulty, language, instruction following, and training data.</p>
+<h3 id="适合-slm-的场景">Suitable uses for small language models</h3>
+<ul>
+<li>Fixed-schema extraction and classification.</li>
+<li>Short-context, single-document question answering.</li>
+<li>High-concurrency, low-latency internal assistants.</li>
+<li>Edge deployment or local inference over sensitive data.</li>
+<li>Task-specific optimization through distillation.</li>
+<li>Systems where a router sends complex questions to stronger models.</li>
+</ul>
+<h3 id="仍需要较大模型的场景">Cases that may still need larger models</h3>
+<ul>
+<li>Resolving conflicts and reasoning across documents.</li>
+<li>Multi-hop retrieval, complex planning, and tool coordination.</li>
+<li>Fine-grained evidence integration in long contexts.</li>
+<li>Low-resource languages or specialized domains.</li>
+<li>High-quality explanations and open-ended writing.</li>
+</ul>
+<h3 id="评估方式">Evaluation</h3>
+<p>Compare more than per-question accuracy: include task success, citation correctness, abstention rate, TTFT/TPOT, per-request cost, peak concurrency, and the fraction escalated to a larger model.</p>
+<h2 id="推理计算的收益与事实性边界">Reasoning compute and the limits of factuality</h2>
+<p>Chain-of-thought prompting uses intermediate steps to provide more inference-time computation for arithmetic, symbolic reasoning, and planning, instead of requiring a direct jump to the conclusion. The costs are more output tokens, latency, and opportunities for error propagation. Generated explanations may not faithfully describe the model’s actual decision process.</p>
+<h3 id="更完整的理解">A fuller view</h3>
+<ul>
+<li>Few-shot CoT supplies examples with derivations.</li>
+<li>Zero-shot CoT uses prompts such as asking for stepwise reasoning.</li>
+<li>Self-consistency samples multiple reasoning paths and votes on answers.</li>
+<li>Reasoning models may use longer internal reasoning during training and inference.</li>
+<li>Agent scratchpads may track plans and tool observations without exposing all internal reasoning to users.</li>
+</ul>
+<p>Products generally provide concise, checkable explanations or calculation steps instead of raw hidden reasoning. Security also cannot depend on hiding CoT: sensitive information should not enter model-visible context unnecessarily, and prompts, tools, and data need independent access controls.</p>
+<h3 id="代价和风险">Costs and risks</h3>
+<ul>
+<li>More tokens and higher latency.</li>
+<li>Incorrect intermediate steps anchoring later answers.</li>
+<li>Plausible reasoning text that is not faithful.</li>
+<li>Extra noise when CoT is forced onto simple questions.</li>
+<li>Leakage if sensitive internal context is copied into visible explanations.</li>
+</ul>
+<h2 id="参考资料">References</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2005.11401" target="_blank" rel="noopener noreferrer">Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks</a></li>
+<li><a href="https://arxiv.org/abs/2201.11903" target="_blank" rel="noopener noreferrer">Chain-of-Thought Prompting Elicits Reasoning in Large Language Models</a></li>
+<li><a href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noopener noreferrer">ReAct: Synergizing Reasoning and Acting in Language Models</a></li>
+</ul>
+<p>These notes also draw on <a href="https://zhuanlan.zhihu.com/p/2022080840163673941" target="_blank" rel="noopener noreferrer">Shard Zhang’s collection of LLM questions</a>, with further discussion of mechanisms, conditions, and engineering trade-offs.</p></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#agent">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><span></span><a href="/en/blog/agent/tool-calling"><small>Next →</small><span>Tool calling: separate model intent from execution authority</span></a></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#幻觉来自哪一层">Where hallucinations come from</a></li><li><a href="#从检索到引用的失败链路">Failure paths from retrieval to citation</a></li><li><a href="#把-rag-组织成可维护的系统">Organize RAG as a maintainable system</a></li><li><a href="#证据质量与模型规模的取舍">Evidence quality versus model size</a></li><li><a href="#推理计算的收益与事实性边界">Reasoning compute and the limits of factuality</a></li><li><a href="#参考资料">References</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

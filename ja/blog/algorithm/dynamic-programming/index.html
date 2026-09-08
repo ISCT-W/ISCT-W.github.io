@@ -1,0 +1,154 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>動的計画法：状態・依存関係・更新順序 · 韋 君豪</title><meta name="description" content="## 一次元ナップサックでは更新方向が参照する段階を決める"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/dynamic-programming/"><meta property="og:title" content="動的計画法：状態・依存関係・更新順序 · 韋 君豪"><meta property="og:description" content="## 一次元ナップサックでは更新方向が参照する段階を決める"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/dynamic-programming/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/dynamic-programming" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/dynamic-programming" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/dynamic-programming" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>動的計画法：状態・依存関係・更新順序</h1><p class="article-description">## 一次元ナップサックでは更新方向が参照する段階を決める</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 7 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="一维背包中遍历方向决定读取哪一轮状态">一次元ナップサックでは更新方向が参照する段階を決める</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/0bf29014451c5e681a31.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="動的計画法：状態・依存関係・更新順序: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/0bf29014451c5e681a31.svg" alt="動的計画法：状態・依存関係・更新順序: 仕組みの図（原文のラベル）" width="541" height="597" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ A["状态：容量 j 的最优值或可达性"] --> B{"物品可重复使用？"}
+ B -->|每件一次| C["j 从大到小"]
+ C --> D["读取上一轮的 dp[j-w]"]
+ B -->|可以重复| E["j 从小到大"]
+ E --> F["允许读取本轮的 dp[j-w]"]
+</code></pre></details></div>
+<p>降順の更新は、同じ段階で同じ品物を繰り返し使うことを防ぎます。昇順では、今更新した状態からさらに遷移できます。0/1ナップサックと個数制限なしナップサックで、特に間違えやすい違いです。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<p>異なる選択が同じ状態に何度も到達し、その状態に以降の結果を決める情報がすべて含まれるなら、結果を保存して再計算を避けられます。最適値を求める場合は、部分問題の最適解から全体の最適解へ遷移できることも確認します。</p>
+<table>
+<thead>
+<tr>
+<th>問題の構造</th>
+<th>状態とパターン</th>
+<th>根拠</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>各数を高々一度使い、目標和を作れるか調べる</td>
+<td>0/1ナップサック：<code>dp[j]</code> は和 <code>j</code> の到達可能性</td>
+<td>到達可能な和だけを管理し、同じ品物を再利用しない</td>
+</tr>
+<tr>
+<td>額面を繰り返し使い、必要個数を最小化する</td>
+<td>個数制限なし：<code>dp[j]</code> は和 <code>j</code> を作る最少個数</td>
+<td>一つ選んだ後の残りも同型の部分問題</td>
+</tr>
+<tr>
+<td>二つの文字列の一致・削除・挿入・置換</td>
+<td>二系列DP：<code>dp[i][j]</code> は二つの接頭辞の解</td>
+<td>末尾を比較すると短い接頭辞へ移れる</td>
+</tr>
+</tbody>
+</table>
+<h2 id="把状态和不变量想清楚">状態と不変条件を明確にする</h2>
+<p><code>dp</code> の意味、初期値、既知の状態からの遷移、依存先が計算済みになる走査順序。この四つを決めます。</p>
+<h2 id="算法骨架">アルゴリズムの骨格</h2>
+<p>以下は三つのパターンです。目標、品物、遷移を示す原文のプレースホルダーは問題に合わせて実装します。一次元に圧縮すると、更新方向が前の段階と現在の段階のどちらを読むかを決めます。</p>
+<pre><code class="language-text"># 0/1 背包：每个物品只能取一次；这里演示可达性
+dp[0] = True，其余为 False
+for 数值 x in 物品:
+    for j 从目标倒序到 x:
+        dp[j] = dp[j] or dp[j - x]
+
+# 完全背包：每种物品可以反复取；这里演示最少数量
+dp[0] = 0，其余为无穷大
+for 数值 x in 物品:
+    for j 从 x 正序到目标:
+        dp[j] = min(dp[j], dp[j - x] + 1)
+
+# 双序列 DP：dp[i][j] 对应 A[:i] 和 B[:j]
+建立 (len(A) + 1) × (len(B) + 1) 的表
+按题意初始化空前缀对应的第一行、第一列
+for i 从 1 到 len(A):
+    for j 从 1 到 len(B):
+        比较 A[i - 1] 与 B[j - 1]
+        从 dp[i - 1][j]、dp[i][j - 1]、dp[i - 1][j - 1]
+        中选择题意允许的转移，写入 dp[i][j]
+返回目标状态
+</code></pre>
+<p>最長共通部分列では空の接頭辞の答えは <code>0</code> ですが、編集距離では相手の接頭辞の長さです。二次元状態を一行に圧縮できるとは限らないため、すべての依存関係をどう残すか先に確認します。</p>
+<h2 id="一维动态规划">一次元DP</h2>
+<h3 id="例题一分割等和子集">例1：和が等しい部分集合への分割</h3>
+<p>問題：<a href="https://leetcode.cn/problems/partition-equal-subset-sum/" target="_blank" rel="noopener noreferrer">LeetCode 416</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">canPartition</span>(<span class="hljs-params">self, nums: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">bool</span>:
+        summ = <span class="hljs-built_in">sum</span>(nums)
+        nums.sort(key=<span class="hljs-keyword">lambda</span> x: -x)
+        <span class="hljs-keyword">if</span> summ % <span class="hljs-number">2</span> <span class="hljs-keyword">or</span> nums[<span class="hljs-number">0</span>] > summ // <span class="hljs-number">2</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        dp = [<span class="hljs-number">0</span> <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(summ + <span class="hljs-number">1</span>)]
+        dp[<span class="hljs-number">0</span>] = <span class="hljs-number">1</span>
+
+        <span class="hljs-keyword">for</span> n <span class="hljs-keyword">in</span> nums:
+            <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(dp) - <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, -<span class="hljs-number">1</span>):
+                <span class="hljs-keyword">if</span> i >= n:
+                    dp[i] = dp[i] <span class="hljs-keyword">or</span> dp[i - n]
+        <span class="hljs-keyword">return</span> dp[summ // <span class="hljs-number">2</span>] == <span class="hljs-number">1</span>
+            
+</code></pre>
+<p><strong>実装のポイント：</strong> 全体の和の半分を作れる部分集合があるか、という問題に置き換えます。<code>dp[i]</code> は和 <code>i</code> を作れるかを表します。各数は一度しか使えないため、容量を大きい方から更新します。</p>
+<h3 id="例题二完全平方数">例2：完全平方数</h3>
+<p>問題：<a href="https://leetcode.cn/problems/perfect-squares/" target="_blank" rel="noopener noreferrer">LeetCode 279</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">numSquares</span>(<span class="hljs-params">self, n: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># mins = [100000] * (n + 1)</span>
+        <span class="hljs-comment"># mins[0] = 0</span>
+        <span class="hljs-comment"># mins[1] = 1</span>
+
+        <span class="hljs-comment"># for i in range(2, len(mins)):</span>
+        <span class="hljs-comment">#     for j in range(int(math.sqrt(i)), 0, -1):</span>
+        <span class="hljs-comment">#         if i >= j ** 2:</span>
+        <span class="hljs-comment">#             mins[i] = min(mins[i], mins[i-j**2]+1)</span>
+        <span class="hljs-comment"># return mins[-1]</span>
+
+        <span class="hljs-comment"># 背包问题：把东西往背包放（外层东西，内层背包）</span>
+        <span class="hljs-comment"># 背包外圈循环物品，内圈循环背包容量；零一背包遵循内圈从大往小循环，完全背包遵循内圈从小往大循环。</span>
+            <span class="hljs-comment"># 0/1 背包倒序：避免当前物品在同一轮被重复使用。</span>
+            <span class="hljs-comment"># 完全背包正序：允许当前物品在同一轮被重复使用。</span>
+            
+        dp = [<span class="hljs-number">100000</span>] * (n + <span class="hljs-number">1</span>)
+        dp[<span class="hljs-number">0</span>] = <span class="hljs-number">0</span>
+        sqaures = [i * i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">int</span>(math.sqrt(n)) + <span class="hljs-number">1</span>)]
+        <span class="hljs-keyword">for</span> s <span class="hljs-keyword">in</span> sqaures:
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(s, n + <span class="hljs-number">1</span>): <span class="hljs-comment"># 放背包</span>
+                dp[j] = <span class="hljs-built_in">min</span>(dp[j], dp[j - s] + <span class="hljs-number">1</span>)
+        <span class="hljs-keyword">return</span> dp[n]
+</code></pre>
+<p><strong>実装のポイント：</strong> 各平方数を何度でも使える品物と考え、<code>dp[j]</code> に和 <code>j</code> を作る最少個数を保存します。容量を昇順で更新するため、今更新した <code>dp[j-s]</code> から同じ平方数を再利用できます。</p>
+<blockquote>
+<p>元の実装をそのまま掲載しています。単独実行には <code>import math</code> を追加してください。</p>
+</blockquote>
+<h2 id="二维动态规划">二次元DP</h2>
+<h3 id="例题三最长公共子序列">例3：最長共通部分列</h3>
+<p>問題：<a href="https://leetcode.cn/problems/longest-common-subsequence/" target="_blank" rel="noopener noreferrer">LeetCode 1143</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">longestCommonSubsequence</span>(<span class="hljs-params">self, text1: <span class="hljs-built_in">str</span>, text2: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># 再长也超不过短的字符串长度</span>
+        dp = [[<span class="hljs-number">0</span> <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(text1) + <span class="hljs-number">1</span>)] <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(text2) + <span class="hljs-number">1</span>)]
+        
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp)): 
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp[<span class="hljs-number">0</span>])):
+                <span class="hljs-keyword">if</span> text2[i - <span class="hljs-number">1</span>] == text1[j - <span class="hljs-number">1</span>]:
+                    dp[i][j] = dp[i - <span class="hljs-number">1</span>][j - <span class="hljs-number">1</span>] + <span class="hljs-number">1</span>
+                <span class="hljs-keyword">else</span>: dp[i][j] = <span class="hljs-built_in">max</span>(dp[i][j - <span class="hljs-number">1</span>], dp[i - <span class="hljs-number">1</span>][j])
+        <span class="hljs-keyword">return</span> dp[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+            
+</code></pre>
+<p><strong>実装のポイント：</strong> <code>dp[i][j]</code> は <code>text2</code> の先頭 <code>i</code> 文字と <code>text1</code> の先頭 <code>j</code> 文字の最長共通部分列長です。末尾が同じなら <code>dp[i-1][j-1]</code> に追加し、異なるなら片方の末尾を除いた二つの結果の大きい方を使います。</p>
+<h3 id="例题四编辑距离">例4：編集距離</h3>
+<p>問題：<a href="https://leetcode.cn/problems/edit-distance/" target="_blank" rel="noopener noreferrer">LeetCode 72</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">minDistance</span>(<span class="hljs-params">self, word1: <span class="hljs-built_in">str</span>, word2: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">int</span>:
+        dp = [[i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(word1) + <span class="hljs-number">1</span>)] <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(word2) + <span class="hljs-number">1</span>)] <span class="hljs-comment"># 一边长n一边长0的编辑距离一定为n 同理要修轴向</span>
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(dp)):
+            dp[i][<span class="hljs-number">0</span>] = i
+        dp[<span class="hljs-number">0</span>][<span class="hljs-number">0</span>] = <span class="hljs-number">0</span> <span class="hljs-comment"># 用来防止边界问题</span>
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp)):
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp[<span class="hljs-number">0</span>])):
+                <span class="hljs-keyword">if</span> word1[j-<span class="hljs-number">1</span>] == word2[i-<span class="hljs-number">1</span>]: <span class="hljs-comment"># 这位一样那么和去掉这位的编辑距离一样</span>
+                    dp[i][j] = dp[i-<span class="hljs-number">1</span>][j-<span class="hljs-number">1</span>]
+                <span class="hljs-keyword">else</span>: <span class="hljs-comment"># 这位不一样就从三种最近可能里取最小再加一即可</span>
+                    dp[i][j] = <span class="hljs-built_in">min</span>(dp[i][j-<span class="hljs-number">1</span>], dp[i-<span class="hljs-number">1</span>][j], dp[i-<span class="hljs-number">1</span>][j-<span class="hljs-number">1</span>]) + <span class="hljs-number">1</span>
+        <span class="hljs-keyword">return</span> dp[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+</code></pre>
+<p><strong>実装のポイント：</strong> <code>dp[i][j]</code> は <code>word1[:j]</code> を <code>word2[:i]</code> に変える最少操作数です。文字が同じなら左上の値をそのまま使い、違うなら削除・挿入・置換の最小値に1を足します。先頭行と先頭列は、空文字列との間の連続した挿入または削除を表します。</p>
+<h2 id="01-背包与完全背包的循环方向">二種類のナップサックの更新方向</h2>
+<ul>
+<li><strong>0/1ナップサック：</strong> 各品物は一度まで。容量を降順に更新します。</li>
+<li><strong>個数制限なしナップサック：</strong> 同じ品物を繰り返し使えます。容量を昇順に更新します。</li>
+</ul></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/dijkstra"><small>← 前の記事</small><span>Dijkstra法：距離・緩和・最小ヒープ</span></a><a href="/ja/blog/algorithm/graph-bfs-trie"><small>次の記事 →</small><span>グラフ・BFS・Trie：ノードよりも不変条件に注目する</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#一维背包中遍历方向决定读取哪一轮状态">一次元ナップサックでは更新方向が参照する段階を決める</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#把状态和不变量想清楚">状態と不変条件を明確にする</a></li><li><a href="#算法骨架">アルゴリズムの骨格</a></li><li><a href="#一维动态规划">一次元DP</a></li><li><a href="#二维动态规划">二次元DP</a></li><li><a href="#01-背包与完全背包的循环方向">二種類のナップサックの更新方向</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

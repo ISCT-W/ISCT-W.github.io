@@ -1,0 +1,99 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dijkstra法：距離・緩和・最小ヒープ · 韋 君豪</title><meta name="description" content="## 距離表と最小ヒープで探索を進める"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/dijkstra/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/dijkstra/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/dijkstra/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/dijkstra/"><meta property="og:title" content="Dijkstra法：距離・緩和・最小ヒープ · 韋 君豪"><meta property="og:description" content="## 距離表と最小ヒープで探索を進める"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/dijkstra/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/dijkstra" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/dijkstra" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/dijkstra" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>Dijkstra法：距離・緩和・最小ヒープ</h1><p class="article-description">## 距離表と最小ヒープで探索を進める</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 4 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="用距离表和最小堆推进搜索">距離表と最小ヒープで探索を進める</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/b085f009b6527006e37a.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="Dijkstra法：距離・緩和・最小ヒープ: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/b085f009b6527006e37a.svg" alt="Dijkstra法：距離・緩和・最小ヒープ: 仕組みの図（原文のラベル）" width="698" height="1475" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ A["起点入堆，距离为 0"] --> Q{"堆非空？"}
+ Q -->|否| Z["结束：返回已求得距离"]
+ Q -->|是| B["弹出当前代价最小的记录"]
+ B --> C{"记录是否过期？"}
+ C -->|是| Q
+ C -->|否| N{"还有未处理的邻居？"}
+ N -->|否| Q
+ N -->|是| D["取下一个邻居，计算候选代价"]
+ D --> E{"比已知距离更优？"}
+ E -->|是| F["更新距离并入堆"]
+ F --> N
+ E -->|否| N
+</code></pre></details></div>
+<p>最小労力経路では、候補のコストを <code>max(現在のコスト, 新しい辺の高低差)</code> で計算します。加算型の最短経路と緩和の枠組みは共通ですが、経路コストの定義が異なります。</p>
+<h2 id="问题结构与状态设计">問題の構造と状態設計</h2>
+<ul>
+<li>同じ状態に高いコストで到達しても、その後の遷移が有利にならないなら、始点から各状態や終点への最適経路を求める際に <code>dist[state]</code> だけを保持できます。</li>
+<li>経路を延ばしてもコストが下がらず、同じ遷移がコストの大小関係を保つことが重要です。非負の辺を持つ最短経路の <code>cost + weight</code> と、ボトルネック経路の <code>max(cost, weight)</code> はどちらも満たします。負の辺がある一般の最短経路にはそのまま使えません。</li>
+<li>最小ヒープから最も安い候補を取り出し、古い記録を飛ばして隣接状態を緩和します。有効な記録を取り出した時点で最適コストが確定するため、それが終点なら返せます。</li>
+<li>残り使用回数や鍵の有無などが次の選択に影響するなら、それらも状態に含めます。位置だけで距離を管理してはいけません。</li>
+</ul>
+<h2 id="通用模板">基本テンプレート</h2>
+<p>以下の骨格では、問題ごとに実装する処理を中国語のプレースホルダーで残しています。主な変更点は状態の定義と <code>new_cost</code> の計算方法です。</p>
+<pre><code class="hljs language-python"><span class="hljs-string">"""
+Dijkstra 通用模版：
+1. 建图 / 定义状态空间
+2. 初始化 dist
+3. 起点状态入堆
+
+while heap 非空:
+    取出当前 cost 最优的状态
+
+    如果这是过期状态:
+        continue
+
+    for 每一个可以转移到的下一状态:
+        计算 new_cost
+
+        if new_cost 优于 dist[next_state]:
+            更新 dist
+            next_state 入堆
+"""</span>
+</code></pre>
+<h2 id="例题最小体力消耗路径">例：最小労力の経路</h2>
+<p>問題：<a href="https://leetcode.cn/problems/path-with-minimum-effort/" target="_blank" rel="noopener noreferrer">LeetCode 1631</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">minimumEffortPath</span>(<span class="hljs-params">self, heights: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-string">"""
+        Dijkstra 通用模版：
+        1. 建图 / 定义状态空间
+        2. 初始化 dist
+        3. 起点状态入堆
+
+        while heap 非空:
+            取出当前 cost 最优的状态
+
+            如果这是过期状态:
+                continue
+
+            for 每一个可以转移到的下一状态:
+                计算 new_cost
+
+                if new_cost 优于 dist[next_state]:
+                    更新 dist
+                    next_state 入堆
+        """</span>
+        m, n = <span class="hljs-built_in">len</span>(heights), <span class="hljs-built_in">len</span>(heights[<span class="hljs-number">0</span>])
+        dists = [[<span class="hljs-built_in">float</span>(<span class="hljs-string">'inf'</span>)] * n <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(m)]
+        dists[<span class="hljs-number">0</span>][<span class="hljs-number">0</span>] = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">import</span> heapq
+        pq = [(<span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>)] <span class="hljs-comment"># cost, r, c</span>
+        directions = [(<span class="hljs-number">1</span>, <span class="hljs-number">0</span>), (-<span class="hljs-number">1</span>, <span class="hljs-number">0</span>), (<span class="hljs-number">0</span>, <span class="hljs-number">1</span>), (<span class="hljs-number">0</span>, -<span class="hljs-number">1</span>)]
+        <span class="hljs-keyword">while</span> pq:
+            cost, r, c = heapq.heappop(pq)
+            <span class="hljs-keyword">if</span> cost > dists[r][c]: <span class="hljs-keyword">continue</span>
+            <span class="hljs-keyword">if</span> r == m - <span class="hljs-number">1</span> <span class="hljs-keyword">and</span> c == n - <span class="hljs-number">1</span>: <span class="hljs-keyword">return</span> cost
+            <span class="hljs-keyword">for</span> dr, dc <span class="hljs-keyword">in</span> directions:
+                nr, nc = r + dr, c + dc 
+                <span class="hljs-keyword">if</span> <span class="hljs-number">0</span> &#x3C;= nr &#x3C; m <span class="hljs-keyword">and</span> <span class="hljs-number">0</span> &#x3C;= nc &#x3C; n:
+                    edge_cost = <span class="hljs-built_in">abs</span>(heights[nr][nc] - heights[r][c])
+                    new_cost = <span class="hljs-built_in">max</span>(cost, edge_cost)
+                    <span class="hljs-keyword">if</span> new_cost &#x3C; dists[nr][nc]:
+                        dists[nr][nc] = new_cost
+                        heapq.heappush(pq, (new_cost, nr, nc))
+
+        <span class="hljs-keyword">return</span> dists[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+</code></pre>
+<h2 id="代码与模板的对应">コードとテンプレートの対応</h2>
+<ul>
+<li><strong>状態空間：</strong> 各マス <code>(r, c)</code> がノードで、上下左右への移動が辺です。</li>
+<li><strong>距離：</strong> <code>dists[r][c]</code> は始点からそのマスまでの最小労力です。</li>
+<li><strong>初期要素：</strong> <code>(0, 0, 0)</code> は始点のコストが0であることを示します。</li>
+<li><strong>古い状態：</strong> <code>cost > dists[r][c]</code> なら、既により良い経路があるため無視します。</li>
+<li><strong>遷移：</strong> 辺のコストは高低差の絶対値、経路の労力は最大の辺コストなので、<code>new_cost = max(cost, edge_cost)</code> です。</li>
+<li><strong>緩和：</strong> コストが改善すれば <code>dists</code> を更新し、新しい候補をヒープに入れます。</li>
+</ul></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/binary-tree"><small>← 前の記事</small><span>二分木：再帰の戻り値を定義する</span></a><a href="/ja/blog/algorithm/dynamic-programming"><small>次の記事 →</small><span>動的計画法：状態・依存関係・更新順序</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#用距离表和最小堆推进搜索">距離表と最小ヒープで探索を進める</a></li><li><a href="#问题结构与状态设计">問題の構造と状態設計</a></li><li><a href="#通用模板">基本テンプレート</a></li><li><a href="#例题最小体力消耗路径">例：最小労力の経路</a></li><li><a href="#代码与模板的对应">コードとテンプレートの対応</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

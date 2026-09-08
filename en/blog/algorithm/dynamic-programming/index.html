@@ -1,0 +1,154 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dynamic programming: states, dependencies, and traversal order · Junhao Wei</title><meta name="description" content="## In one-dimensional knapsack, direction determines which round you read"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/dynamic-programming/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/dynamic-programming/"><meta property="og:title" content="Dynamic programming: states, dependencies, and traversal order · Junhao Wei"><meta property="og:description" content="## In one-dimensional knapsack, direction determines which round you read"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/algorithm/dynamic-programming/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/dynamic-programming" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/dynamic-programming" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/algorithm/dynamic-programming" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#algorithm">Algorithms</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / Study notes</p><h1>Dynamic programming: states, dependencies, and traversal order</h1><p class="article-description">## In one-dimensional knapsack, direction determines which round you read</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 6 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="一维背包中遍历方向决定读取哪一轮状态">In one-dimensional knapsack, direction determines which round you read</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/0bf29014451c5e681a31.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="Dynamic programming: states, dependencies, and traversal order: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/0bf29014451c5e681a31.svg" alt="Dynamic programming: states, dependencies, and traversal order: mechanism diagram (original labels)" width="541" height="597" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart TD
+ A["状态：容量 j 的最优值或可达性"] --> B{"物品可重复使用？"}
+ B -->|每件一次| C["j 从大到小"]
+ C --> D["读取上一轮的 dp[j-w]"]
+ B -->|可以重复| E["j 从小到大"]
+ E --> F["允许读取本轮的 dp[j-w]"]
+</code></pre></details></div>
+<p>Descending updates prevent the current item from being reused within the same round. Ascending updates allow newly updated states to participate again. This is the easiest distinction to get wrong between 0/1 and unbounded knapsack.</p>
+<h2 id="先识别问题的结构">Recognize the structure first</h2>
+<p>If different choices repeatedly reach the same state, and that state contains everything needed to determine subsequent results, store its answer to avoid recomputation. For optimization problems, also establish that an optimal solution can be obtained from optimal solutions of those subproblems.</p>
+<table>
+<thead>
+<tr>
+<th>Problem structure</th>
+<th>State and pattern</th>
+<th>Key justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Use each number at most once; determine whether a target sum is possible</td>
+<td>0/1 knapsack: <code>dp[j]</code> records reachability of <code>j</code></td>
+<td>Only reachable sums matter; do not reuse the current item</td>
+</tr>
+<tr>
+<td>Reuse denominations; minimize the number needed for a sum</td>
+<td>Unbounded knapsack: <code>dp[j]</code> is the minimum count for <code>j</code></td>
+<td>After taking one value, the remaining target is the same kind of subproblem</td>
+</tr>
+<tr>
+<td>Match, delete, insert, or replace characters in two strings</td>
+<td>Two-sequence DP: <code>dp[i][j]</code> answers a pair of prefixes</td>
+<td>Comparing final characters reduces the problem to shorter prefixes</td>
+</tr>
+</tbody>
+</table>
+<h2 id="把状态和不变量想清楚">Define the state and invariant</h2>
+<p>Answer four questions: What does <code>dp</code> mean? How is it initialized? How do known states produce new ones? Which traversal order ensures all dependencies are available?</p>
+<h2 id="算法骨架">Algorithm skeletons</h2>
+<p>The three patterns below retain the original placeholders for targets, items, and transitions. After compression to one dimension, traversal direction determines whether a transition reads the previous round or the current one.</p>
+<pre><code class="language-text"># 0/1 背包：每个物品只能取一次；这里演示可达性
+dp[0] = True，其余为 False
+for 数值 x in 物品:
+    for j 从目标倒序到 x:
+        dp[j] = dp[j] or dp[j - x]
+
+# 完全背包：每种物品可以反复取；这里演示最少数量
+dp[0] = 0，其余为无穷大
+for 数值 x in 物品:
+    for j 从 x 正序到目标:
+        dp[j] = min(dp[j], dp[j - x] + 1)
+
+# 双序列 DP：dp[i][j] 对应 A[:i] 和 B[:j]
+建立 (len(A) + 1) × (len(B) + 1) 的表
+按题意初始化空前缀对应的第一行、第一列
+for i 从 1 到 len(A):
+    for j 从 1 到 len(B):
+        比较 A[i - 1] 与 B[j - 1]
+        从 dp[i - 1][j]、dp[i][j - 1]、dp[i - 1][j - 1]
+        中选择题意允许的转移，写入 dp[i][j]
+返回目标状态
+</code></pre>
+<p>An empty prefix has an LCS length of <code>0</code>, while its edit distance to another prefix is that prefix’s length. A two-dimensional DP cannot always be reduced to one row: first establish how every dependency will be retained.</p>
+<h2 id="一维动态规划">One-dimensional DP</h2>
+<h3 id="例题一分割等和子集">Example 1: Partition Equal Subset Sum</h3>
+<p>Problem: <a href="https://leetcode.cn/problems/partition-equal-subset-sum/" target="_blank" rel="noopener noreferrer">LeetCode 416</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">canPartition</span>(<span class="hljs-params">self, nums: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">bool</span>:
+        summ = <span class="hljs-built_in">sum</span>(nums)
+        nums.sort(key=<span class="hljs-keyword">lambda</span> x: -x)
+        <span class="hljs-keyword">if</span> summ % <span class="hljs-number">2</span> <span class="hljs-keyword">or</span> nums[<span class="hljs-number">0</span>] > summ // <span class="hljs-number">2</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        dp = [<span class="hljs-number">0</span> <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(summ + <span class="hljs-number">1</span>)]
+        dp[<span class="hljs-number">0</span>] = <span class="hljs-number">1</span>
+
+        <span class="hljs-keyword">for</span> n <span class="hljs-keyword">in</span> nums:
+            <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(dp) - <span class="hljs-number">1</span>, <span class="hljs-number">0</span>, -<span class="hljs-number">1</span>):
+                <span class="hljs-keyword">if</span> i >= n:
+                    dp[i] = dp[i] <span class="hljs-keyword">or</span> dp[i - n]
+        <span class="hljs-keyword">return</span> dp[summ // <span class="hljs-number">2</span>] == <span class="hljs-number">1</span>
+            
+</code></pre>
+<p><strong>Implementation:</strong> The question becomes whether a subset sums to half the total. <code>dp[i]</code> means sum <code>i</code> is reachable. Each number is available once, so iterate capacities downward to prevent reusing it in the same round.</p>
+<h3 id="例题二完全平方数">Example 2: Perfect Squares</h3>
+<p>Problem: <a href="https://leetcode.cn/problems/perfect-squares/" target="_blank" rel="noopener noreferrer">LeetCode 279</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">numSquares</span>(<span class="hljs-params">self, n: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># mins = [100000] * (n + 1)</span>
+        <span class="hljs-comment"># mins[0] = 0</span>
+        <span class="hljs-comment"># mins[1] = 1</span>
+
+        <span class="hljs-comment"># for i in range(2, len(mins)):</span>
+        <span class="hljs-comment">#     for j in range(int(math.sqrt(i)), 0, -1):</span>
+        <span class="hljs-comment">#         if i >= j ** 2:</span>
+        <span class="hljs-comment">#             mins[i] = min(mins[i], mins[i-j**2]+1)</span>
+        <span class="hljs-comment"># return mins[-1]</span>
+
+        <span class="hljs-comment"># 背包问题：把东西往背包放（外层东西，内层背包）</span>
+        <span class="hljs-comment"># 背包外圈循环物品，内圈循环背包容量；零一背包遵循内圈从大往小循环，完全背包遵循内圈从小往大循环。</span>
+            <span class="hljs-comment"># 0/1 背包倒序：避免当前物品在同一轮被重复使用。</span>
+            <span class="hljs-comment"># 完全背包正序：允许当前物品在同一轮被重复使用。</span>
+            
+        dp = [<span class="hljs-number">100000</span>] * (n + <span class="hljs-number">1</span>)
+        dp[<span class="hljs-number">0</span>] = <span class="hljs-number">0</span>
+        sqaures = [i * i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">int</span>(math.sqrt(n)) + <span class="hljs-number">1</span>)]
+        <span class="hljs-keyword">for</span> s <span class="hljs-keyword">in</span> sqaures:
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(s, n + <span class="hljs-number">1</span>): <span class="hljs-comment"># 放背包</span>
+                dp[j] = <span class="hljs-built_in">min</span>(dp[j], dp[j - s] + <span class="hljs-number">1</span>)
+        <span class="hljs-keyword">return</span> dp[n]
+</code></pre>
+<p><strong>Implementation:</strong> Each perfect square is an unlimited item. <code>dp[j]</code> stores the fewest squares summing to <code>j</code>. Ascending capacities let an updated <code>dp[j-s]</code> reuse the same square.</p>
+<blockquote>
+<p>The original implementation is preserved. Add <code>import math</code> to run it independently.</p>
+</blockquote>
+<h2 id="二维动态规划">Two-dimensional DP</h2>
+<h3 id="例题三最长公共子序列">Example 3: Longest Common Subsequence</h3>
+<p>Problem: <a href="https://leetcode.cn/problems/longest-common-subsequence/" target="_blank" rel="noopener noreferrer">LeetCode 1143</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">longestCommonSubsequence</span>(<span class="hljs-params">self, text1: <span class="hljs-built_in">str</span>, text2: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># 再长也超不过短的字符串长度</span>
+        dp = [[<span class="hljs-number">0</span> <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(text1) + <span class="hljs-number">1</span>)] <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(text2) + <span class="hljs-number">1</span>)]
+        
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp)): 
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp[<span class="hljs-number">0</span>])):
+                <span class="hljs-keyword">if</span> text2[i - <span class="hljs-number">1</span>] == text1[j - <span class="hljs-number">1</span>]:
+                    dp[i][j] = dp[i - <span class="hljs-number">1</span>][j - <span class="hljs-number">1</span>] + <span class="hljs-number">1</span>
+                <span class="hljs-keyword">else</span>: dp[i][j] = <span class="hljs-built_in">max</span>(dp[i][j - <span class="hljs-number">1</span>], dp[i - <span class="hljs-number">1</span>][j])
+        <span class="hljs-keyword">return</span> dp[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+            
+</code></pre>
+<p><strong>Implementation:</strong> <code>dp[i][j]</code> is the LCS length of the first <code>i</code> characters of <code>text2</code> and first <code>j</code> of <code>text1</code>. Matching final characters extend <code>dp[i-1][j-1]</code>. Otherwise, drop either final character and take the better result.</p>
+<h3 id="例题四编辑距离">Example 4: Edit Distance</h3>
+<p>Problem: <a href="https://leetcode.cn/problems/edit-distance/" target="_blank" rel="noopener noreferrer">LeetCode 72</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">minDistance</span>(<span class="hljs-params">self, word1: <span class="hljs-built_in">str</span>, word2: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">int</span>:
+        dp = [[i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(word1) + <span class="hljs-number">1</span>)] <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(word2) + <span class="hljs-number">1</span>)] <span class="hljs-comment"># 一边长n一边长0的编辑距离一定为n 同理要修轴向</span>
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(dp)):
+            dp[i][<span class="hljs-number">0</span>] = i
+        dp[<span class="hljs-number">0</span>][<span class="hljs-number">0</span>] = <span class="hljs-number">0</span> <span class="hljs-comment"># 用来防止边界问题</span>
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp)):
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(dp[<span class="hljs-number">0</span>])):
+                <span class="hljs-keyword">if</span> word1[j-<span class="hljs-number">1</span>] == word2[i-<span class="hljs-number">1</span>]: <span class="hljs-comment"># 这位一样那么和去掉这位的编辑距离一样</span>
+                    dp[i][j] = dp[i-<span class="hljs-number">1</span>][j-<span class="hljs-number">1</span>]
+                <span class="hljs-keyword">else</span>: <span class="hljs-comment"># 这位不一样就从三种最近可能里取最小再加一即可</span>
+                    dp[i][j] = <span class="hljs-built_in">min</span>(dp[i][j-<span class="hljs-number">1</span>], dp[i-<span class="hljs-number">1</span>][j], dp[i-<span class="hljs-number">1</span>][j-<span class="hljs-number">1</span>]) + <span class="hljs-number">1</span>
+        <span class="hljs-keyword">return</span> dp[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+</code></pre>
+<p><strong>Implementation:</strong> <code>dp[i][j]</code> is the minimum number of operations to turn <code>word1[:j]</code> into <code>word2[:i]</code>. Matching characters use the diagonal state unchanged. Otherwise take the minimum over deletion, insertion, and replacement, then add one. The first row and column describe repeated insertions or deletions between an empty string and a nonempty prefix.</p>
+<h2 id="01-背包与完全背包的循环方向">Loop direction in the two knapsack variants</h2>
+<ul>
+<li><strong>0/1 knapsack:</strong> Each item is usable once; update capacities downward.</li>
+<li><strong>Unbounded knapsack:</strong> Items may be reused; update capacities upward.</li>
+</ul></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#algorithm">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><a href="/en/blog/algorithm/dijkstra"><small>← Previous</small><span>Dijkstra: distances, relaxation, and a min-heap</span></a><a href="/en/blog/algorithm/graph-bfs-trie"><small>Next →</small><span>Graphs, BFS, and tries: similar nodes, different invariants</span></a></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#一维背包中遍历方向决定读取哪一轮状态">In one-dimensional knapsack, direction determines which round you read</a></li><li><a href="#先识别问题的结构">Recognize the structure first</a></li><li><a href="#把状态和不变量想清楚">Define the state and invariant</a></li><li><a href="#算法骨架">Algorithm skeletons</a></li><li><a href="#一维动态规划">One-dimensional DP</a></li><li><a href="#二维动态规划">Two-dimensional DP</a></li><li><a href="#01-背包与完全背包的循环方向">Loop direction in the two knapsack variants</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

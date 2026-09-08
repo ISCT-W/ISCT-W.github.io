@@ -1,0 +1,67 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ヒープ：二つの半分の境界を管理する · 韋 君豪</title><meta name="description" content="## 二つの境界値で中央値を管理する"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/heap/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/heap/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/heap/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/heap/"><meta property="og:title" content="ヒープ：二つの半分の境界を管理する · 韋 君豪"><meta property="og:description" content="## 二つの境界値で中央値を管理する"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/heap/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/heap" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/heap" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/heap" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>ヒープ：二つの半分の境界を管理する</h1><p class="article-description">## 二つの境界値で中央値を管理する</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 4 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="用两半数据的边界维护中位数">二つの境界値で中央値を管理する</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/62adc17798cb9179ba30.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="ヒープ：二つの半分の境界を管理する: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/62adc17798cb9179ba30.svg" alt="ヒープ：二つの半分の境界を管理する: 仕組みの図（原文のラベル）" width="468" height="661" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart LR
+ A["新元素"] --> B["按大小关系放入一侧"]
+ B --> L["较小一半：最大堆"]
+ B --> R["较大一半：最小堆"]
+ L &#x3C;--> S["重新平衡数量"]
+ S &#x3C;--> R
+ L --> M["奇数取较多侧堆顶；偶数取两堆顶均值"]
+ R --> M
+</code></pre></details></div>
+<p>二つのヒープで、小さい半分の最大値と大きい半分の最小値を保持します。個数差を1以下に保つだけでなく、左側のすべての値が右側以下であることも必要です。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<p>候補が増減し、その都度最小値や最大値だけが必要なら、ヒープで全体の再ソートを避けられます。動的な中央値なら小さい半分と大きい半分に分け、境界の要素を管理します。ヒープが保証するのは先頭が最良であることだけで、内部配列全体がソートされているわけではありません。</p>
+<h2 id="核心思路">基本の考え方</h2>
+<p>ヒープは最小値・最大値を繰り返し取り出す処理に適しています。Pythonの <code>heapq</code> は最小ヒープなので、最大ヒープとして使う場合は値を負にして保存します。</p>
+<h2 id="教学骨架">学習用の骨格</h2>
+<p>優先度を定義し、先頭を繰り返し取り出します。以下の疑似コードでは候補の処理などを問題に応じて補います。状態オブジェクトを保存するときは <code>(priority, unique_id, state)</code> とすれば、優先度が同じ場合にも比較不能なオブジェクト同士を比較せずに済みます。</p>
+<pre><code class="language-text">把初始候选按优先级放入堆
+while 堆非空:
+    取出当前优先级最优的候选
+    若采用了保留旧条目的更新策略，先检查它是否过期
+    处理候选；若产生新候选，按优先级入堆
+</code></pre>
+<p>二つのヒープで中央値を求める場合の不変条件は二つです。小さい半分の全要素が大きい半分の全要素以下であることと、小さい半分の個数が同じか一つ多いことです。</p>
+<pre><code class="language-text">插入 x:
+    x 先进入较小半边的大顶堆
+    把大顶堆最大值移到较大半边的小顶堆，恢复两边大小关系
+    若小顶堆数量更多，把其最小值移回大顶堆
+查询中位数（至少已有一个数）:
+    数量为奇数：取大顶堆堆顶
+    数量为偶数：取两堆堆顶的平均值
+</code></pre>
+<h2 id="例题数据流的中位数困难">例：データストリームの中央値（Hard）</h2>
+<p>問題：<a href="https://leetcode.cn/problems/find-median-from-data-stream/" target="_blank" rel="noopener noreferrer">LeetCode 295</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">import</span> heapq
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">MedianFinder</span>:
+    <span class="hljs-comment"># 维护一个最小堆和一个最大堆，保证，最大堆的所有值比最小堆的小且两边堆数量不差超过1，那pop出来的就是中位数</span>
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self</span>):
+        <span class="hljs-variable language_">self</span>.min_heap = []
+        heapq.heapify(<span class="hljs-variable language_">self</span>.min_heap)
+        <span class="hljs-variable language_">self</span>.max_heap = []
+        heapq.heapify(<span class="hljs-variable language_">self</span>.max_heap)
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">addNum</span>(<span class="hljs-params">self, num: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-literal">None</span>:
+        heapq.heappush(<span class="hljs-variable language_">self</span>.max_heap, -num) <span class="hljs-comment"># 先放到大顶堆 - 可以保证大顶堆一定不少于小顶堆，方便维护</span>
+        <span class="hljs-comment"># 数字丢到小顶堆，保证大顶所有数都比小顶小</span>
+        heapq.heappush(<span class="hljs-variable language_">self</span>.min_heap, -heapq.heappop(<span class="hljs-variable language_">self</span>.max_heap))
+        <span class="hljs-comment"># 平衡数量</span>
+        <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.min_heap) > <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.max_heap):
+            heapq.heappush(<span class="hljs-variable language_">self</span>.max_heap, -heapq.heappop(<span class="hljs-variable language_">self</span>.min_heap))
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findMedian</span>(<span class="hljs-params">self</span>) -> <span class="hljs-built_in">float</span>:
+        <span class="hljs-comment"># 奇数 则max_heap多一个</span>
+        <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.max_heap) > <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.min_heap):
+            <span class="hljs-keyword">return</span> -<span class="hljs-variable language_">self</span>.max_heap[<span class="hljs-number">0</span>]
+        
+        <span class="hljs-comment"># 偶数 则每个堆一个</span>
+        <span class="hljs-keyword">return</span> (-<span class="hljs-variable language_">self</span>.max_heap[<span class="hljs-number">0</span>] + <span class="hljs-variable language_">self</span>.min_heap[<span class="hljs-number">0</span>]) / <span class="hljs-number">2</span>
+
+
+<span class="hljs-comment"># Your MedianFinder object will be instantiated and called as such:</span>
+<span class="hljs-comment"># obj = MedianFinder()</span>
+<span class="hljs-comment"># obj.addNum(num)</span>
+<span class="hljs-comment"># param_2 = obj.findMedian()</span>
+</code></pre>
+<p><strong>考え方：</strong> 最大ヒープに小さい半分、最小ヒープに大きい半分を入れます。左右の大小関係を保ち、最大ヒープの個数を同数か一つ多くします。挿入時は二つのヒープを経由して大小関係を整え、個数を調整します。奇数個なら最大ヒープの先頭、偶数個なら両方の先頭の平均が中央値です。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/greedy"><small>← 前の記事</small><span>貪欲法：局所的な選択が安全であることを示す</span></a><a href="/ja/blog/algorithm/lexicographical-order"><small>次の記事 →</small><span>辞書順と次の順列</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#用两半数据的边界维护中位数">二つの境界値で中央値を管理する</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#核心思路">基本の考え方</a></li><li><a href="#教学骨架">学習用の骨格</a></li><li><a href="#例题数据流的中位数困难">例：データストリームの中央値（Hard）</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

@@ -1,0 +1,249 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>并查集：集合代表与路径压缩 · 韦君豪</title><meta name="description" content="从省份数量、冗余连接、等式约束和账户合并理解集合归属，重点澄清直接父节点与当前根节点，以及正确统计集合的方法。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/algorithm/union-find/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/union-find/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/union-find/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/union-find/"><meta property="og:title" content="并查集：集合代表与路径压缩 · 韦君豪"><meta property="og:description" content="从省份数量、冗余连接、等式约束和账户合并理解集合归属，重点澄清直接父节点与当前根节点，以及正确统计集合的方法。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/algorithm/union-find/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/union-find" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/algorithm/union-find" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/union-find" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#algorithm">算法</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学习笔记</p><h1>并查集：集合代表与路径压缩</h1><p class="article-description">从省份数量、冗余连接、等式约束和账户合并理解集合归属，重点澄清直接父节点与当前根节点，以及正确统计集合的方法。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 8 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="只把集合代表连接起来">只把集合代表连接起来</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/29f56be16ee4f5fc63e3.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="并查集：集合代表与路径压缩: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/29f56be16ee4f5fc63e3.svg" alt="并查集：集合代表与路径压缩: 机制示意图" width="568" height="503" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart LR
+ A["查询元素 a、b"] --> B["find(a)、find(b)"]
+ B --> C{"根相同？"}
+ C -->|是| D["已经连通，无需合并"]
+ C -->|否| E["连接两个不同的根"]
+ B --> F["查找时压缩路径"]
+</code></pre></details></div>
+<p>集合由根节点代表。路径压缩只缩短查找路径，不改变集合关系；本文采用直接连接两个根；按大小或秩合并是可以另行加入的优化，用于避免树长期偏向一条链。</p>
+<h2 id="先识别问题的结构">先识别问题的结构</h2>
+<ul>
+<li><strong>只关心是否同组、共有几组</strong>：关系具有传递性，例如城市间接连通、变量相等、账户共享邮箱。</li>
+<li><strong>不断合并集合，随后查询归属</strong>：合并后不会拆开，适合用根节点代表一个集合。</li>
+<li><strong>无向图加边判环</strong>：若一条边的两个端点原本已经连通，再连这条边就会成环。</li>
+</ul>
+<p>先判断“谁是节点、什么关系允许合并”。普通并查集不直接解决最短路径、有向图可达性或删除边后的分裂；静态连通分量也可以用 DFS/BFS。</p>
+<h2 id="状态设计与核心骨架">状态设计与核心骨架</h2>
+<ol>
+<li>给节点编号，每个节点最初独立成组，父节点是自己。</li>
+<li><code>find(x)</code> 沿父指针找到根；下面的写法还会进行路径压缩。</li>
+<li><code>union(x, y)</code> 先找两个根；不同根才合并，相同根则返回 <code>False</code>。</li>
+<li>按题意统计成功合并次数、比较根，或按根分组。</li>
+</ol>
+<p>核心实现如下；<code>26</code> 对应小写字母，其他题改成实际节点数（若编号从 1 开始，注意预留下标）：</p>
+<pre><code class="hljs language-python">parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">26</span>)]
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+    <span class="hljs-keyword">if</span> parents[x] != x:
+        parents[x] = find(parents[x])
+    <span class="hljs-keyword">return</span> parents[x]
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+    px, py = find(x), find(y)
+    <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+    parents[py] = px
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+</code></pre>
+<p><code>parents[x]</code> 是 <strong>直接父节点</strong>；<code>find(x)</code> 返回 <strong>当前根节点（集合代表）</strong>；根满足 <code>parents[root] == root</code>。合并时挂接的是两个根，方向可选，根的编号不一定最小，也不一定是最早出现的节点。</p>
+<h2 id="重点为什么不能直接用-lensetparents">重点：为什么不能直接用 len(set(parents))</h2>
+<p>并查集始终用整条父指针链表示归属，<strong>合并完成后，同组节点的直接父节点不一定相同</strong>。因此，问题不在于“还没真正合并”，而在于把直接父节点误当成集合代表。</p>
+<p><code>union</code> 只修改一个根的父指针，不会遍历它的全部后代。<code>find(x)</code> 才会沿途找到当前根，并把本次访问路径上的节点直接挂到根下；它不会一次更新整个集合。即便一个节点之前压缩过，后续根再次被合并后，也可能需要重新 <code>find</code>。</p>
+<p>用与本文的 547 双层循环一致的处理顺序举例：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>parents</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>初始化</td>
+<td><code>[0, 1, 2, 3]</code></td>
+<td>四个集合</td>
+</tr>
+<tr>
+<td><code>union(0, 3)</code></td>
+<td><code>[0, 1, 2, 0]</code></td>
+<td>3 挂到 0</td>
+</tr>
+<tr>
+<td><code>union(1, 2)</code></td>
+<td><code>[0, 1, 1, 0]</code></td>
+<td>2 挂到 1</td>
+</tr>
+<tr>
+<td><code>union(2, 3)</code></td>
+<td><code>[1, 1, 1, 0]</code></td>
+<td>根 0 挂到根 1，但 3 仍直接指向 0</td>
+</tr>
+<tr>
+<td><code>find(3)</code></td>
+<td><code>[1, 1, 1, 1]</code></td>
+<td>沿 <code>3 → 0 → 1</code> 查根并压缩</td>
+</tr>
+</tbody>
+</table>
+<p>第三次合并后，四个节点已经连通，但 <code>set(parents) == {0, 1}</code>，会错算成两个省份。</p>
+<p>正确计数有三种写法（这里节点为 <code>0..n-1</code>）：</p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># 方式一：对每个节点查当前根，再去重</span>
+count = <span class="hljs-built_in">len</span>({find(i) <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n)})
+
+<span class="hljs-comment"># 方式二：直接数根；不需要先压缩所有节点</span>
+count = <span class="hljs-built_in">sum</span>(parents[i] == i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n))
+
+<span class="hljs-comment"># 方式三：初始化 count = n，每次 union 返回 True 时 count -= 1</span>
+<span class="hljs-comment"># 见下面 547 的当前代码。</span>
+</code></pre>
+<p>若想继续使用 <code>len(set(parents))</code>，必须在所有合并结束后对每个节点调用 <code>find</code>，且统计前不再合并。查询两点是否同组也应比较 <code>find(x) == find(y)</code>，不要比较 <code>parents[x] == parents[y]</code>。</p>
+<h2 id="例题一547-省份数量">例题一：547. 省份数量</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/number-of-provinces/" target="_blank" rel="noopener noreferrer">LeetCode 547. 省份数量</a></p>
+<h3 id="我的代码">我的代码</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findCircleNum</span>(<span class="hljs-params">self, isConnected: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-string">"""
+        并查集的经典骨架：
+            parent = list(range(n))
+
+            def find(x): # 一直往上找到parent是自己的节点！
+                if parent[x] != x:
+                    parent[x] = find(parent[x])
+                return parent[x]
+
+            def union(a, b): # 
+                ra = find(a)
+                rb = find(b)
+
+                if ra == rb:
+                    return False
+
+                parent[rb] = ra
+                return True
+        """</span>
+        n = <span class="hljs-built_in">len</span>(isConnected)
+        provinces = n
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n)] <span class="hljs-comment"># 记录各自的parent；初始化为自己</span>
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = px
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n):
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(i + <span class="hljs-number">1</span>, n):
+                <span class="hljs-keyword">if</span> isConnected[i][j] == <span class="hljs-number">1</span>:
+                    <span class="hljs-keyword">if</span> union(i, j):
+                        provinces -= <span class="hljs-number">1</span>
+        
+        <span class="hljs-keyword">return</span> provinces
+</code></pre>
+<p><strong>对应思路</strong>：城市是节点，矩阵中的 <code>1</code> 是合并依据。对称矩阵只扫描上三角即可。每次真正合并两个集合，<code>provinces</code> 减一；已连通的两点不会重复扣减，所以不需要最后统一压缩再计数。</p>
+<p>可复现上面陷阱的输入为 <code>[[1,0,0,1],[0,1,1,0],[0,1,1,1],[1,0,1,1]]</code>：实际只有一个省份，当前计数写法返回 <code>1</code>，合并后直接对父数组去重却得到 <code>2</code>。</p>
+<h2 id="例题二684-冗余连接">例题二：684. 冗余连接</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/redundant-connection/" target="_blank" rel="noopener noreferrer">LeetCode 684. 冗余连接</a></p>
+<h3 id="我的代码-1">我的代码</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">findRedundantConnection</span>(<span class="hljs-params">self, edges: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]:
+        <span class="hljs-comment"># 逻辑就是找到环，然后把成环的最后一条边删了吧？</span>
+        <span class="hljs-comment"># 模拟一遍发现其实就是已经union的东西！</span>
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(edges) + <span class="hljs-number">1</span>)] <span class="hljs-comment"># 从1开始！</span>
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+        
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = parents[px]
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+
+        <span class="hljs-keyword">for</span> i, j <span class="hljs-keyword">in</span> edges:
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> union(i, j):
+                <span class="hljs-keyword">return</span> [i, j]
+</code></pre>
+<p><strong>对应思路</strong>：按输入顺序加入无向边。<code>union(i, j)</code> 返回 <code>False</code> 时，两点已经有路径相连，这条边恰好闭合环。题目保证“树加一条边”，因此这就是唯一环中最后出现的边，满足返回顺序要求。</p>
+<p>例如 <code>[[1,2],[1,3],[2,3]]</code>：前两条合并成功，第三条两端已经同组，返回 <code>[2,3]</code>。<code>px</code> 已是根，所以代码中的 <code>parents[px]</code> 等于 <code>px</code>。</p>
+<h2 id="例题三990-等式方程的可满足性">例题三：990. 等式方程的可满足性</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/satisfiability-of-equality-equations/" target="_blank" rel="noopener noreferrer">LeetCode 990. 等式方程的可满足性</a></p>
+<h3 id="我的代码-2">我的代码</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">equationsPossible</span>(<span class="hljs-params">self, equations: <span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]</span>) -> <span class="hljs-built_in">bool</span>:
+        <span class="hljs-comment"># 等于则连上，不等于则不连。判断所有不等的find是否到同一节点</span>
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">26</span>)]
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = px
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+
+        non_equations = []
+        <span class="hljs-keyword">for</span> eq <span class="hljs-keyword">in</span> equations:
+            x, y = eq[<span class="hljs-number">0</span>], eq[<span class="hljs-number">3</span>]
+            <span class="hljs-keyword">if</span> eq[<span class="hljs-number">1</span>] == <span class="hljs-string">'='</span>:
+                union(<span class="hljs-built_in">ord</span>(x)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>), <span class="hljs-built_in">ord</span>(y)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>))
+            <span class="hljs-keyword">else</span>:
+                non_equations.append([x, y])
+        
+        <span class="hljs-keyword">for</span> x, y <span class="hljs-keyword">in</span> non_equations:
+            <span class="hljs-keyword">if</span> find(<span class="hljs-built_in">ord</span>(x)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>)) == find(<span class="hljs-built_in">ord</span>(y)-<span class="hljs-built_in">ord</span>(<span class="hljs-string">'a'</span>)):
+                <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+</code></pre>
+<p><strong>对应思路</strong>：字母是节点，先合并所有等式，再检查不等式两端是否同根。<code>!=</code> 不能用来合并，因为“不等”没有传递性。</p>
+<p>必须等所有等式处理完才检查：例如 <code>["a!=c", "a==b", "b==c"]</code>，第一条暂时看不冲突，但后两条把 <code>a,b,c</code> 合到同组，最终应返回 <code>False</code>。</p>
+<h2 id="例题四721-账户合并">例题四：721. 账户合并</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/accounts-merge/" target="_blank" rel="noopener noreferrer">LeetCode 721. 账户合并</a></p>
+<h3 id="我的代码-3">我的代码</h3>
+<pre><code class="hljs language-python"><span class="hljs-keyword">from</span> collections <span class="hljs-keyword">import</span> defaultdict
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">accountsMerge</span>(<span class="hljs-params">self, accounts: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]:
+        <span class="hljs-string">"""
+        思路：用set(a) &#x26; set(b) 非空则是同一个用户，直接union。 - 复杂度很高！
+        """</span>
+        parents = [i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(accounts))] <span class="hljs-comment"># 每个人名对应在列表的index</span>
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">find</span>(<span class="hljs-params">x</span>):
+            <span class="hljs-keyword">if</span> parents[x] != x:
+                parents[x] = find(parents[x])
+            <span class="hljs-keyword">return</span> parents[x]
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">union</span>(<span class="hljs-params">x, y</span>):
+            px, py = find(x), find(y)
+            <span class="hljs-keyword">if</span> px == py: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            parents[py] = px
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+        <span class="hljs-string">"""
+        更好的思路：直接遍历邮箱，第一次出现就放在当前index，不是则进行名字的union！
+        """</span>
+        email_2_account = {}
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(parents)):
+            <span class="hljs-keyword">for</span> email <span class="hljs-keyword">in</span> accounts[i][<span class="hljs-number">1</span>:]:
+                <span class="hljs-keyword">if</span> email <span class="hljs-keyword">in</span> email_2_account: <span class="hljs-comment"># 之前出现过，说明这个account属于之前的人</span>
+                    union(i, email_2_account[email])
+                <span class="hljs-keyword">else</span>:
+                    email_2_account[email] = i
+
+        groups = defaultdict(<span class="hljs-built_in">list</span>)
+        <span class="hljs-keyword">for</span> email, account_idx <span class="hljs-keyword">in</span> email_2_account.items():
+            root = find(account_idx) <span class="hljs-comment"># 需要找到最开始的user名合并在这里不然合并零散！</span>
+            groups[root].append(email)
+
+        ans = []
+        <span class="hljs-keyword">for</span> root, emails <span class="hljs-keyword">in</span> groups.items():
+            name = accounts[root][<span class="hljs-number">0</span>]
+            ans.append([name] + <span class="hljs-built_in">sorted</span>(emails))
+        <span class="hljs-keyword">return</span> ans        
+</code></pre>
+<p><strong>对应思路</strong>：这份实现以“账户下标”为节点，共同邮箱才是合并证据，同名本身不够。<code>email_2_account</code> 记录邮箱第一次出现的账户；再次出现时合并两个账户，避免账户两两比较。全部合并后，再按 <code>find(account_idx)</code> 聚合邮箱并排序。</p>
+<p>例如账户 A 有邮箱 <code>x,y</code>，B 有 <code>z</code>，C 有 <code>y,z</code>：C 会把前两组连接成同一组。映射里保存的仍是最初账户下标，所以分组时必须重新查根。</p>
+<p>原注释中的“最开始的 user”应理解成<strong>当前集合代表</strong>，并不保证是最早的账户；同一人的账户名称一致，故 <code>accounts[root][0]</code> 可以取名称。最初的集合交集思路也应只比较邮箱 <code>accounts[i][1:]</code>，不能把名字算作共同证据。</p>
+<h2 id="复习检查点">复习检查点</h2>
+<ul>
+<li>合并两个<strong>根</strong>；同根时不改集合数。</li>
+<li>查归属、判同组、分组用 <code>find</code>；数根可直接判断 <code>parents[i] == i</code>。</li>
+<li><code>find</code> 的路径压缩只更新访问路径，后续合并仍可能改变代表。</li>
+<li>这份简洁模板只有路径压缩，没有按秩/大小合并；不要直接套用“两种优化同时使用时”的近似常数摊还复杂度结论。未压缩的长链上，单次递归查根仍可能走过很多节点。</li>
+</ul>
+<p>代码来源：2026-09-07 读取 Chrome 中四题的当前 Python3 编辑器，各完整复制两次核对；保留原始代码与注释，以上讲解另行补充。</p></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#algorithm">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/algorithm/sliding-window"><small>← 上一篇</small><span>滑动窗口：扩张、收缩与候选淘汰</span></a><span></span></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#只把集合代表连接起来">只把集合代表连接起来</a></li><li><a href="#先识别问题的结构">先识别问题的结构</a></li><li><a href="#状态设计与核心骨架">状态设计与核心骨架</a></li><li><a href="#重点为什么不能直接用-lensetparents">重点：为什么不能直接用 len(set(parents))</a></li><li><a href="#例题一547-省份数量">例题一：547. 省份数量</a></li><li><a href="#例题二684-冗余连接">例题二：684. 冗余连接</a></li><li><a href="#例题三990-等式方程的可满足性">例题三：990. 等式方程的可满足性</a></li><li><a href="#例题四721-账户合并">例题四：721. 账户合并</a></li><li><a href="#复习检查点">复习检查点</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

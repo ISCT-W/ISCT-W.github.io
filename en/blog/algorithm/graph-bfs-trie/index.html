@@ -1,0 +1,197 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Graphs, BFS, and tries: similar nodes, different invariants · Junhao Wei</title><meta name="description" content="These three Hot 100 problems share a “graph” category but use different patterns: multi-source BFS for Rotting Oranges, topological sorting for Course Schedule, and a tree-based data structure for Trie."><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/algorithm/graph-bfs-trie/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/graph-bfs-trie/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/graph-bfs-trie/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/graph-bfs-trie/"><meta property="og:title" content="Graphs, BFS, and tries: similar nodes, different invariants · Junhao Wei"><meta property="og:description" content="These three Hot 100 problems share a “graph” category but use different patterns: multi-source BFS for Rotting Oranges, topological sorting for Course Schedule, and a tree-based data structure for Trie."><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/algorithm/graph-bfs-trie/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/graph-bfs-trie" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/graph-bfs-trie" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/algorithm/graph-bfs-trie" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#algorithm">Algorithms</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / Study notes</p><h1>Graphs, BFS, and tries: similar nodes, different invariants</h1><p class="article-description">These three Hot 100 problems share a “graph” category but use different patterns: multi-source BFS for Rotting Oranges, topological sorting for Course Schedule, and a tree-based data structure for Trie.</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 6 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>These three Hot 100 problems share a “graph” category but use different patterns: multi-source BFS for Rotting Oranges, topological sorting for Course Schedule, and a tree-based data structure for Trie.</p>
+<h2 id="节点相似维护的状态不同">Similar nodes, different state</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/5c7c7695d4bed651acce.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="Graphs, BFS, and tries: similar nodes, different invariants: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/5c7c7695d4bed651acce.svg" alt="Graphs, BFS, and tries: similar nodes, different invariants: mechanism diagram (original labels)" width="876" height="301" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart TD
+ A["问题中的关系是什么？"] --> B["同时扩散：多源 BFS"]
+ A --> C["先后依赖：拓扑排序"]
+ A --> D["共享字符串前缀：Trie"]
+ B --> B1["队列一层对应同一时刻"]
+ C --> C1["入度表示尚未满足的依赖"]
+ D --> D1["根到节点的路径表示前缀"]
+</code></pre></details></div>
+<p>Define the state before choosing a data structure. Several algorithms use a queue, but its entries and the conditions for removing them differ.</p>
+<h2 id="问题结构与状态设计">Problem structure and state design</h2>
+<table>
+<thead>
+<tr>
+<th>Evidence in the problem</th>
+<th>Pattern</th>
+<th>Meaning to preserve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Equal-time transitions; minimum steps or simultaneous spread from several starts</td>
+<td>Multi-source BFS</td>
+<td>Process distance layers; mark nodes when enqueued to prevent repeated propagation</td>
+</tr>
+<tr>
+<td>Directed prerequisites: finish A before B</td>
+<td>Topological sorting</td>
+<td>Indegree counts unmet dependencies; process only zero-indegree nodes</td>
+</tr>
+<tr>
+<td>Repeated word insertion, exact lookup, and prefix lookup</td>
+<td>Trie</td>
+<td>The root-to-node path is a prefix; exact words also need a terminal marker or separate set</td>
+</tr>
+</tbody>
+</table>
+<p>BFS’s minimum-step result relies on equal edge costs. Topological sorting tracks satisfied dependencies. A trie follows character paths. The presence of “nodes” does not make these algorithms interchangeable.</p>
+<h2 id="算法骨架">Algorithm skeletons</h2>
+<pre><code class="language-text"># 多源 BFS：每一层对应同一时刻
+将所有起点标记并入队
+时间 = 0
+while 队列非空且仍有待到达的目标:
+    当前层数量 = len(队列)
+    重复当前层数量次:
+        取出节点 u
+        for u 的每个合法且未访问的邻居 v:
+            标记 v，更新剩余目标数，将 v 入队
+    时间 += 1
+根据剩余目标是否为 0 判断是否全部到达
+
+# Kahn 拓扑排序：建边 A -> B，表示 A 是 B 的前置条件
+建立邻接表和入度，将所有入度为 0 的节点入队
+已处理数量 = 0
+while 队列非空:
+    取出节点 u，已处理数量 += 1
+    for u 指向的每个节点 v:
+        入度[v] -= 1
+        if 入度[v] == 0: 将 v 入队
+已处理数量 == 节点总数，才说明无环且能全部完成
+
+# Trie：插入和查询都从根开始，每次消耗一个字符
+插入(word):
+    node = 根
+    for 字符 ch in word:
+        若 ch 对应的子节点不存在，则创建
+        node = node 的 ch 子节点
+    标记 node 为单词结尾（或将 word 放入完整词集合）
+查询(text, 是否要求完整词):
+    从根逐字符向下，任一边不存在就返回 False
+    若查前缀，路径走完就返回 True
+    若查完整词，还要验证结束标记（或完整词集合）
+</code></pre>
+<h2 id="例题一腐烂的橘子">Example 1: Rotting Oranges</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/rotting-oranges/" target="_blank" rel="noopener noreferrer">LeetCode 994</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">from</span> collections <span class="hljs-keyword">import</span> deque
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">orangesRotting</span>(<span class="hljs-params">self, grid: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># 先找到所有的新鲜橘子记录个数为fresh，并找到所有腐烂橘子在deque进行多源BFS即可。</span>
+        fresh = <span class="hljs-number">0</span>
+        directions = [[-<span class="hljs-number">1</span>, <span class="hljs-number">0</span>], [<span class="hljs-number">1</span>, <span class="hljs-number">0</span>], [<span class="hljs-number">0</span>, -<span class="hljs-number">1</span>], [<span class="hljs-number">0</span>, <span class="hljs-number">1</span>]]
+        m, n = <span class="hljs-built_in">len</span>(grid), <span class="hljs-built_in">len</span>(grid[<span class="hljs-number">0</span>])
+        rots = deque()
+
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(m):
+            <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n):
+                <span class="hljs-keyword">if</span> grid[i][j] == <span class="hljs-number">1</span>:
+                    fresh += <span class="hljs-number">1</span>
+                <span class="hljs-keyword">if</span> grid[i][j] == <span class="hljs-number">2</span>:
+                    rots.append([i, j])
+        minutes = <span class="hljs-number">0</span>
+        <span class="hljs-keyword">while</span> rots <span class="hljs-keyword">and</span> fresh:  <span class="hljs-comment"># 继续条件：有fresh并且还能继续rot</span>
+            <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(rots)):
+                u, v = rots.popleft()
+                <span class="hljs-keyword">for</span> d <span class="hljs-keyword">in</span> directions:
+                    <span class="hljs-keyword">if</span> <span class="hljs-number">0</span> &#x3C;= u + d[<span class="hljs-number">0</span>] &#x3C;= m - <span class="hljs-number">1</span> <span class="hljs-keyword">and</span> <span class="hljs-number">0</span> &#x3C;= v + d[<span class="hljs-number">1</span>] &#x3C;= n - <span class="hljs-number">1</span> <span class="hljs-keyword">and</span> grid[u + d[<span class="hljs-number">0</span>]][v + d[<span class="hljs-number">1</span>]] == <span class="hljs-number">1</span>:
+                        grid[u + d[<span class="hljs-number">0</span>]][v + d[<span class="hljs-number">1</span>]] = <span class="hljs-number">2</span>
+                        rots.append([u + d[<span class="hljs-number">0</span>], v + d[<span class="hljs-number">1</span>]])
+                        fresh -= <span class="hljs-number">1</span>
+            minutes += <span class="hljs-number">1</span>
+        <span class="hljs-keyword">return</span> minutes <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> fresh <span class="hljs-keyword">else</span> -<span class="hljs-number">1</span>
+</code></pre>
+<p><strong>Implementation:</strong> Enqueue every rotten orange at once. Each round processes only the nodes present at its start and represents one minute. Newly rotten oranges spread in the next round. Any remaining <code>fresh</code> oranges are unreachable.</p>
+<h2 id="例题二课程表">Example 2: Course Schedule</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/course-schedule/" target="_blank" rel="noopener noreferrer">LeetCode 207</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">from</span> collections <span class="hljs-keyword">import</span> defaultdict
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">canFinish</span>(<span class="hljs-params">self, numCourses: <span class="hljs-built_in">int</span>, prerequisites: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-built_in">bool</span>:
+        <span class="hljs-comment"># 拓扑排序：</span>
+        <span class="hljs-comment"># 入度为 0 的课，说明它没有先修课，可以直接学。</span>
+        <span class="hljs-comment"># 每次把入度为 0 的课“修掉”，</span>
+        <span class="hljs-comment"># 它指向的下一门课入度 -1。</span>
+        <span class="hljs-comment"># 如果最后所有课都能修完，说明无环。</span>
+        
+        <span class="hljs-comment"># 邻接表：graph[b]存所有以b为前置课的课</span>
+        graph = [ [] <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(numCourses) ]
+
+        <span class="hljs-comment"># 入度数组： in_degree[i] 表示i还有多少门前置课没修</span>
+        in_degree = [<span class="hljs-number">0</span>] * numCourses
+
+        <span class="hljs-comment"># 建图：[ a, b ] 表示先修b才能修a</span>
+        <span class="hljs-keyword">for</span> a , b <span class="hljs-keyword">in</span> prerequisites:
+            graph[b].append(a)
+            in_degree[a] += <span class="hljs-number">1</span>
+        
+        <span class="hljs-comment"># 初始入队所有入度为0的课(没有前置可直接修)</span>
+        queue = deque( i <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(numCourses) <span class="hljs-keyword">if</span> in_degree[i] == <span class="hljs-number">0</span> )
+        finished = <span class="hljs-number">0</span>
+
+        <span class="hljs-comment"># 每弹出一门课，代表修完它，把它指向的课入度-1</span>
+        <span class="hljs-keyword">while</span> queue:
+            x = queue.popleft()
+            finished += <span class="hljs-number">1</span>
+
+            <span class="hljs-keyword">for</span> y <span class="hljs-keyword">in</span> graph[x]:
+                in_degree[y] -= <span class="hljs-number">1</span>
+                <span class="hljs-keyword">if</span> in_degree[y] == <span class="hljs-number">0</span>:
+                    queue.append(y)
+
+        <span class="hljs-comment"># 如果修完的课数等于总课数，说明无环</span>
+        <span class="hljs-keyword">return</span> finished == numCourses
+</code></pre>
+<p><strong>Implementation:</strong> Kahn’s algorithm repeatedly removes courses of indegree <code>0</code>. If fewer than all courses are processed, a cycle exists. Remaining nodes may lie on the cycle or downstream of it.</p>
+<blockquote>
+<p>The original submission is preserved. For standalone execution, add <code>from collections import deque</code>; the imported <code>defaultdict</code> is unused here.</p>
+</blockquote>
+<h2 id="例题三实现-trie前缀树">Example 3: Implement Trie (Prefix Tree)</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/implement-trie-prefix-tree/" target="_blank" rel="noopener noreferrer">LeetCode 208</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Node</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, val=<span class="hljs-number">0</span></span>):
+        <span class="hljs-variable language_">self</span>.val = val
+        <span class="hljs-variable language_">self</span>.<span class="hljs-built_in">next</span> = {}
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Trie</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self</span>):
+        <span class="hljs-variable language_">self</span>.root = Node()  <span class="hljs-comment"># 服务于startwith</span>
+        <span class="hljs-variable language_">self</span>.contents = <span class="hljs-built_in">set</span>()  <span class="hljs-comment"># 服务于search</span>
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">insert</span>(<span class="hljs-params">self, word: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-literal">None</span>:
+        <span class="hljs-variable language_">self</span>.contents.add(word)
+        head = word[<span class="hljs-number">0</span>]
+        <span class="hljs-keyword">if</span> head <span class="hljs-keyword">not</span> <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.root.<span class="hljs-built_in">next</span>.keys():
+            new_node = Node(head)
+            <span class="hljs-variable language_">self</span>.root.<span class="hljs-built_in">next</span>[head] = new_node
+        
+        head = <span class="hljs-variable language_">self</span>.root.<span class="hljs-built_in">next</span>.get(word[<span class="hljs-number">0</span>])        
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(word)):
+            <span class="hljs-keyword">if</span> word[i] <span class="hljs-keyword">in</span> head.<span class="hljs-built_in">next</span>:
+                cur_node = head.<span class="hljs-built_in">next</span>[word[i]]
+            <span class="hljs-keyword">else</span>:
+                cur_node = Node(word[i])
+                head.<span class="hljs-built_in">next</span>[word[i]] = cur_node
+            head = cur_node
+        <span class="hljs-keyword">return</span>
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">search</span>(<span class="hljs-params">self, word: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">bool</span>:
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span> <span class="hljs-keyword">if</span> word <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.contents <span class="hljs-keyword">else</span> <span class="hljs-literal">False</span>
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">startsWith</span>(<span class="hljs-params">self, prefix: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-built_in">bool</span>:
+        head = <span class="hljs-variable language_">self</span>.root
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(<span class="hljs-built_in">len</span>(prefix)):
+            <span class="hljs-keyword">if</span> prefix[i] <span class="hljs-keyword">not</span> <span class="hljs-keyword">in</span> head.<span class="hljs-built_in">next</span>.keys():
+                <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+            head = head.<span class="hljs-built_in">next</span>.get(prefix[i])
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+    
+
+<span class="hljs-comment"># Your Trie object will be instantiated and called as such:</span>
+<span class="hljs-comment"># obj = Trie()</span>
+<span class="hljs-comment"># obj.insert(word)</span>
+<span class="hljs-comment"># param_2 = obj.search(word)</span>
+<span class="hljs-comment"># param_3 = obj.startsWith(prefix)</span>
+</code></pre>
+<p><strong>Implementation:</strong> Each node’s <code>next</code> maps characters to children. Insertion constructs the character path; <code>startsWith</code> only checks that it exists. This implementation uses a separate <code>contents</code> set for exact-word lookup.</p></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#algorithm">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><a href="/en/blog/algorithm/dynamic-programming"><small>← Previous</small><span>Dynamic programming: states, dependencies, and traversal order</span></a><a href="/en/blog/algorithm/greedy"><small>Next →</small><span>Greedy algorithms: prove the local choice is safe</span></a></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#节点相似维护的状态不同">Similar nodes, different state</a></li><li><a href="#问题结构与状态设计">Problem structure and state design</a></li><li><a href="#算法骨架">Algorithm skeletons</a></li><li><a href="#例题一腐烂的橘子">Example 1: Rotting Oranges</a></li><li><a href="#例题二课程表">Example 2: Course Schedule</a></li><li><a href="#例题三实现-trie前缀树">Example 3: Implement Trie (Prefix Tree)</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

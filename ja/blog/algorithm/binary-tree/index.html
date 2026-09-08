@@ -1,0 +1,127 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>二分木：再帰の戻り値を定義する · 韋 君豪</title><meta name="description" content="## 最大経路和で扱う二種類の情報"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/binary-tree/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/binary-tree/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/binary-tree/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/binary-tree/"><meta property="og:title" content="二分木：再帰の戻り値を定義する · 韋 君豪"><meta property="og:description" content="## 最大経路和で扱う二種類の情報"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/binary-tree/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/binary-tree" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/binary-tree" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/binary-tree" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>二分木：再帰の戻り値を定義する</h1><p class="article-description">## 最大経路和で扱う二種類の情報</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 6 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="最大路径和中的两种信息">最大経路和で扱う二種類の情報</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/c198832d821e8da9a6c9.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="二分木：再帰の戻り値を定義する: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/c198832d821e8da9a6c9.svg" alt="二分木：再帰の戻り値を定義する: 仕組みの図（原文のラベル）" width="610" height="326" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ L["L = max(0, 左子树返回值)"] --> N["当前节点"]
+ R["R = max(0, 右子树返回值)"] --> N
+ N --> A["value + L + R：更新全局答案"]
+ N --> P["value + max(L, R)：返回父节点"]
+</code></pre></details></div>
+<p>完成した経路は、現在のノードで左右の子をつなげられます。一方、親へ返す経路は片側だけを選びます。両側を返すと分岐ができてしまうからです。負の寄与は捨てられますが、全ノードが負の場合も最終解として扱う必要があります。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<ul>
+<li>左右の部分木上の同型の問題に分け、その結果を結合できるなら再帰的な分割統治を考えます。関数が扱う範囲と戻り値を決めてから、根を処理するタイミングを選びます。</li>
+<li>木の復元では、行きがけ順の先頭が根を示し、通りがけ順での根の位置が左右の境界を決めます。値の重複がないため、根の位置を一意に決定できます。</li>
+<li>任意の始点から下方向へ伸びる経路を数える場合は、始点の選択と、固定した始点からの探索を分けます。各経路を、その経路自身の始点で一度だけ数えられます。</li>
+<li>左右両方を通る経路では、現在のノードで両側の寄与を合わせて解を更新できます。ただし、親には延長可能な一本の枝だけを返します。</li>
+</ul>
+<h2 id="把状态和不变量想清楚">状態と不変条件を明確にする</h2>
+<p>再帰の戻り値を先に定義します。典型的には「現在のノードを端点とする片側の情報」か「現在の部分木全体の解」です。左右を組み合わせる経路では、最終解を別の変数に記録することがよくあります。</p>
+<h2 id="教学骨架">学習用の骨格</h2>
+<p>以下は三種類の再帰を示す疑似コードです。分割や構築を示す中国語の箇所は、ノード型や区間の表現に合わせて実装します。</p>
+<pre><code class="language-text">构造二叉树 build(前序, 中序)：
+    if 区间为空：return None
+    用前序首元素建立根，在中序中定位根
+    按中序左右长度，同步划分两种遍历的左右子树区间
+    root.left = build(左前序, 左中序)
+    root.right = build(右前序, 右中序)
+    return root
+
+统计向下路径：
+    extend(node, remain)：          # 必须从 node 开始
+        if node 为空：return 0
+        return (node.val == remain) + extend(node.left, remain-node.val)
+                                   + extend(node.right, remain-node.val)
+    all_paths(node, target)：       # 枚举起点
+        if node 为空：return 0
+        return extend(node, target) + all_paths(node.left, target)
+                                    + all_paths(node.right, target)
+
+最大路径和（非空树）：
+    ans = -∞
+    gain(node)：                   # 返回以 node 为端点的最大单边贡献
+        if node 为空：return 0
+        left = max(0, gain(node.left))
+        right = max(0, gain(node.right))
+        ans = max(ans, node.val+left+right)
+        return node.val + max(left, right)
+    gain(root)，返回 ans
+</code></pre>
+<p>固定した始点からの経路が目標和に達しても、その先に0や負の数がある可能性があるため探索を続けます。ここでの二重の再帰は最悪 <code>O(n²)</code> です。改善するなら、DFSで根から現在のノードまでの累積和の個数を管理し、戻る際に個数を取り消します。</p>
+<h2 id="例题一从前序与中序遍历序列构造二叉树">例1：行きがけ順と通りがけ順から二分木を復元する</h2>
+<p>問題：<a href="https://leetcode.cn/problems/construct-binary-tree-from-preorder-and-inorder-traversal/" target="_blank" rel="noopener noreferrer">LeetCode 105</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for a binary tree node.</span>
+<span class="hljs-comment"># class TreeNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, left=None, right=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.left = left</span>
+<span class="hljs-comment">#         self.right = right</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">buildTree</span>(<span class="hljs-params">self, preorder: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>], inorder: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-type">Optional</span>[TreeNode]:
+        <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(inorder) == <span class="hljs-number">0</span>: <span class="hljs-keyword">return</span>
+        root = TreeNode(preorder[<span class="hljs-number">0</span>])
+        mid = inorder.index(preorder[<span class="hljs-number">0</span>])
+
+        <span class="hljs-comment"># 构建子树</span>
+        root.left = <span class="hljs-variable language_">self</span>.buildTree(preorder[<span class="hljs-number">1</span>:mid+<span class="hljs-number">1</span>], inorder[:mid])
+        root.right = <span class="hljs-variable language_">self</span>.buildTree(preorder[mid+<span class="hljs-number">1</span>:], inorder[mid+<span class="hljs-number">1</span>:])
+
+        <span class="hljs-keyword">return</span> root
+</code></pre>
+<p><strong>実装のポイント：</strong> 行きがけ順の先頭は必ず根です。通りがけ順での根の位置から左右の部分木の長さを求め、行きがけ順も同じ長さに基づいて分割し、再帰的に構築します。</p>
+<h2 id="例题二路径总和-iii">例2：Path Sum III</h2>
+<p>問題：<a href="https://leetcode.cn/problems/path-sum-iii/" target="_blank" rel="noopener noreferrer">LeetCode 437</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for a binary tree node.</span>
+<span class="hljs-comment"># class TreeNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, left=None, right=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.left = left</span>
+<span class="hljs-comment">#         self.right = right</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">pathSum</span>(<span class="hljs-params">self, root: <span class="hljs-type">Optional</span>[TreeNode], targetSum: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># 对于单个递归不能够混合带/不带当前节点，因为会导致单个情况被遍历多次！</span>
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">calc_ans</span>(<span class="hljs-params">node, remain</span>):
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> node: <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+            ans = <span class="hljs-number">0</span>
+            <span class="hljs-keyword">if</span> node.val == remain:
+                ans += <span class="hljs-number">1</span>
+            ans += calc_ans(node.left, remain-node.val)
+            ans += calc_ans(node.right, remain-node.val)
+            <span class="hljs-keyword">return</span> ans
+        
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> root: <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+        <span class="hljs-comment"># 计算包含当前节点的结果</span>
+        ans = calc_ans(root, targetSum)
+
+        <span class="hljs-comment"># 计算不包含当前节点的结果</span>
+        ans += <span class="hljs-variable language_">self</span>.pathSum(root.left, targetSum)
+        ans += <span class="hljs-variable language_">self</span>.pathSum(root.right, targetSum)
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>実装のポイント：</strong> <code>calc_ans</code> は現在のノードを必ず始点とする経路を数えます。外側の <code>pathSum</code> が左右の子を新しい始点として扱い、すべての始点を網羅します。</p>
+<h2 id="例题三二叉树中的最大路径和困难">例3：二分木の最大経路和（Hard）</h2>
+<p>問題：<a href="https://leetcode.cn/problems/binary-tree-maximum-path-sum/" target="_blank" rel="noopener noreferrer">LeetCode 124</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for a binary tree node.</span>
+<span class="hljs-comment"># class TreeNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, left=None, right=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.left = left</span>
+<span class="hljs-comment">#         self.right = right</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">maxPathSum</span>(<span class="hljs-params">self, root: <span class="hljs-type">Optional</span>[TreeNode]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-comment"># 和求最大直径基本一样，唯独注意这里的最大值不一定是一整条路径，所以更新最大值的时候计算 max(l + r, l, r, 0) + root.val!</span>
+        <span class="hljs-variable language_">self</span>.ans = -<span class="hljs-number">1000000</span>
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">depth</span>(<span class="hljs-params">root</span>):
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> root: <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+            l = depth(root.left)
+            r = depth(root.right)
+            root_val = root.val + <span class="hljs-built_in">max</span>(l, <span class="hljs-number">0</span>) + <span class="hljs-built_in">max</span>(r, <span class="hljs-number">0</span>)
+            <span class="hljs-variable language_">self</span>.ans = <span class="hljs-built_in">max</span>(<span class="hljs-variable language_">self</span>.ans, root_val)
+            <span class="hljs-keyword">return</span> <span class="hljs-built_in">max</span>(l, r, <span class="hljs-number">0</span>) + root.val
+        depth(root)
+        <span class="hljs-keyword">return</span> <span class="hljs-variable language_">self</span>.ans
+</code></pre>
+<h3 id="两种路径必须分清">二種類の経路を区別する</h3>
+<ul>
+<li><code>depth(root)</code> の戻り値は親が延長するため、左右どちらか一方だけを使います：<code>root.val + max(l, r, 0)</code>。</li>
+<li>現在のノードを最高点とする完成した経路は両側を使えます：<code>root.val + max(l, 0) + max(r, 0)</code>。これは全体の解の更新にのみ使い、親には返しません。</li>
+<li>子の寄与が負なら <code>0</code> にして、その枝を使わないことを表します。全体の解は十分小さい値で初期化するため、全ノードが負でも最大値の単一ノードを選べます。</li>
+</ul></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/binary-search"><small>← 前の記事</small><span>二分探索：答えが存在し得る区間を残す</span></a><a href="/ja/blog/algorithm/dijkstra"><small>次の記事 →</small><span>Dijkstra法：距離・緩和・最小ヒープ</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#最大路径和中的两种信息">最大経路和で扱う二種類の情報</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#把状态和不变量想清楚">状態と不変条件を明確にする</a></li><li><a href="#教学骨架">学習用の骨格</a></li><li><a href="#例题一从前序与中序遍历序列构造二叉树">例1：行きがけ順と通りがけ順から二分木を復元する</a></li><li><a href="#例题二路径总和-iii">例2：Path Sum III</a></li><li><a href="#例题三二叉树中的最大路径和困难">例3：二分木の最大経路和（Hard）</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

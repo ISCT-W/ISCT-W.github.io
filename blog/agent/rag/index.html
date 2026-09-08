@@ -1,0 +1,199 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RAG：把检索结果变成可以核对的回答 · 韦君豪</title><meta name="description" content="沿数据、检索、重排、生成与引用定位幻觉，讨论企业级检索链路、小模型选择，以及推理计算能够和不能解决的问题。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/agent/rag/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/rag/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/rag/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/rag/"><meta property="og:title" content="RAG：把检索结果变成可以核对的回答 · 韦君豪"><meta property="og:description" content="沿数据、检索、重排、生成与引用定位幻觉，讨论企业级检索链路、小模型选择，以及推理计算能够和不能解决的问题。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/agent/rag/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/rag" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/agent/rag" lang="en" hrefLang="en">EN</a><a href="/ja/blog/agent/rag" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#agent">Agent 应用</a></nav><header class="article-header"><p class="eyebrow ">AGENT / 学习笔记</p><h1>RAG：把检索结果变成可以核对的回答</h1><p class="article-description">沿数据、检索、重排、生成与引用定位幻觉，讨论企业级检索链路、小模型选择，以及推理计算能够和不能解决的问题。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 7 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>RAG 的价值是让模型使用可更新的外部知识，但从文档进入系统到答案交付，中间仍有一连串可能失真的环节。可靠性因此不能只看召回率，也不能只看回答是否附有链接。需要把知识来源、上下文组织、生成约束与引用验证分别设计，再把失败追溯到具体阶段。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/9582946cec0043592cf3.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="RAG：把检索结果变成可以核对的回答: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/9582946cec0043592cf3.svg" alt="RAG：把检索结果变成可以核对的回答: 机制示意图" width="591" height="931" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart TD
+    D["文档接入、解析与版本"] --> I["结构感知分块与索引"]
+    Q["用户问题"] --> P["权限与元数据范围"]
+    P --> R["混合检索"]
+    I --> R
+    R --> K["重排与上下文压缩"]
+    K --> E{"证据是否足以回答"}
+    E -->|"是"| G["生成回答并逐项绑定来源"]
+    G --> V["核对结论与引用的支持关系"]
+    E -->|"否"| U["澄清、换工具或返回未知"]
+</code></pre></details></div>
+<p>检索只是证据链的一段。图中的检查点分别约束可访问的数据、进入上下文的证据，以及最终结论是否由来源支持；没有答案的检索结果不应被包装成确定结论。</p>
+<h2 id="幻觉来自哪一层">幻觉来自哪一层</h2>
+<p>LLM 的训练目标是预测条件分布中的下一个 token，而不是查询一个始终正确的事实数据库。知识缺失、Prompt 含糊、训练冲突、长上下文利用不足和解码策略都可能让模型生成语言连贯但无证据的答案。缓解幻觉需要从知识来源、生成约束、验证和拒答四层设计，而不是只调低 Temperature。</p>
+<h3 id="原因分类">原因分类</h3>
+<ol>
+<li><strong>模型知识问题</strong>：预训练数据没有该事实、事实过时或来源冲突；</li>
+<li><strong>输入问题</strong>：问题前提错误、指代不清或要求超出可用上下文；</li>
+<li><strong>生成目标问题</strong>：模型被训练为尽量回答，缺少“证据不足时停止”的行为；</li>
+<li><strong>上下文利用问题</strong>：检索证据太长、位置靠后、相互矛盾或被无关信息淹没；</li>
+<li><strong>解码问题</strong>：较高随机性增加输出变化，但贪心/低温同样可能稳定地产生错误事实；</li>
+<li><strong>工具和数据问题</strong>：上游搜索、OCR、数据库或 API 已经返回错误结果。</li>
+</ol>
+<h3 id="缓解方法">缓解方法</h3>
+<ul>
+<li>用 RAG、数据库或业务工具提供可更新知识；</li>
+<li>把候选实体限制在 closed set，使用结构化 ID；</li>
+<li>让回答关联引用，并检查 claim 是否由证据支持；</li>
+<li>对数字、日期、计算和权限敏感事实使用确定性工具；</li>
+<li>采用 Schema/Constrained Decoding 限制输出结构；</li>
+<li>增加 verifier、self-consistency 或第二模型复核；</li>
+<li>明确“证据不足/工具失败时返回 unknown”；</li>
+<li>将检索质量与生成质量分开评估。</li>
+</ul>
+<p>降低 Temperature 主要减少随机性；CoT 可能帮助多步推理，但两者都不是事实性保证。</p>
+<h3 id="工程应用">工程应用</h3>
+<p>一种可行设计是让引用由成功工具结果派生，并使用限定的角色或素材候选集、规则数据库和几何验证，把高风险事实从自由文本生成迁移到确定性证据协议。</p>
+<hr>
+<h2 id="从检索到引用的失败链路">从检索到引用的失败链路</h2>
+<p>RAG 只是把外部上下文放入生成过程，检索和生成两个阶段都可能失败。正确文档没有被召回、分块丢失条件、Rerank 排错、上下文相互冲突、模型忽略证据或在无答案时强行回答，都会造成 RAG 幻觉。</p>
+<h3 id="失败链路">失败链路</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>典型失败</th>
+<th>对应诊断指标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ingestion</td>
+<td>OCR 错误、表格结构丢失、旧版本混入</td>
+<td>文档覆盖率、解析准确率</td>
+</tr>
+<tr>
+<td>Chunking</td>
+<td>条件与结论被拆开、Chunk 过大/过小</td>
+<td>Answer-bearing chunk 可召回率</td>
+</tr>
+<tr>
+<td>Retrieval</td>
+<td>Query 不匹配、向量语义偏移、权限过滤后无结果</td>
+<td>Recall@k、MRR、无结果率</td>
+</tr>
+<tr>
+<td>Rerank</td>
+<td>正确文档被降权</td>
+<td>NDCG、Top-k 命中</td>
+</tr>
+<tr>
+<td>Context</td>
+<td>证据太长、冲突、lost-in-the-middle</td>
+<td>Context precision、位置消融</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>模型使用参数记忆覆盖证据、错误归因</td>
+<td>Faithfulness/Groundedness</td>
+</tr>
+<tr>
+<td>Citation</td>
+<td>引用存在但不支持对应 claim</td>
+<td>Citation precision/recall</td>
+</tr>
+</tbody>
+</table>
+<h3 id="改进方式">改进方式</h3>
+<ul>
+<li>Query rewrite、multi-query、metadata filter 和 hybrid retrieval；</li>
+<li>Parent-child、sentence-window 或结构感知分块；</li>
+<li>Cross-encoder/LLM rerank；</li>
+<li>在生成前判断 context 是否含答案；</li>
+<li>要求按 claim 给引用，并做引用蕴含检查；</li>
+<li>证据冲突时展示来源和时间，不强行合并；</li>
+<li>检索无结果时触发澄清、换工具或拒答；</li>
+<li>将网页/文档视为不可信输入，处理 Prompt Injection。</li>
+</ul>
+<h2 id="把-rag-组织成可维护的系统">把 RAG 组织成可维护的系统</h2>
+<p>企业级 RAG 是数据、检索、生成、权限、评估和运维共同组成的系统。核心链路为：</p>
+<pre><code class="language-text">数据接入与版本
+→ 解析/OCR/清洗
+→ 结构感知分块
+→ Embedding + 关键词/结构化索引
+→ 权限与元数据过滤
+→ Query 理解/改写
+→ Hybrid Retrieval
+→ Rerank 与上下文压缩
+→ 生成、引用与拒答
+→ 评估、反馈和可观测性
+</code></pre>
+<h3 id="各层要点">各层要点</h3>
+<h4 id="数据层">数据层</h4>
+<ul>
+<li>为文档保存 owner、tenant、版本、生效时间和权限；</li>
+<li>PDF、表格、图片、代码使用不同解析策略；</li>
+<li>去重并保留父子结构、章节和页码；</li>
+<li>更新或删除文档时同步清理索引。</li>
+</ul>
+<h4 id="索引层">索引层</h4>
+<ul>
+<li>Dense Embedding 捕捉语义相似；</li>
+<li>BM25/关键词覆盖专有名词、ID 和精确短语；</li>
+<li>结构化字段进入 metadata filter；</li>
+<li>根据数据规模选择 HNSW、IVF 或托管向量库；</li>
+<li>Embedding 模型升级需要索引版本管理。</li>
+</ul>
+<h4 id="检索层">检索层</h4>
+<ul>
+<li>识别问题类型和时间范围；</li>
+<li>Query Rewrite、Decomposition 或 Multi-hop Retrieval；</li>
+<li>Hybrid 分数融合；</li>
+<li>Cross-encoder/LLM Rerank；</li>
+<li>去重、上下文压缩和 token 预算。</li>
+</ul>
+<h4 id="生成层">生成层</h4>
+<ul>
+<li>明确回答必须基于哪些 Context；</li>
+<li>逐 claim 绑定来源；</li>
+<li>缺少证据时澄清或返回未知；</li>
+<li>工具结果和文档文本使用不同信任级别；</li>
+<li>使用结构化输出支持后续程序处理。</li>
+</ul>
+<h4 id="平台层">平台层</h4>
+<ul>
+<li>多租户和文档级 ACL；</li>
+<li>缓存键包含用户/项目/权限范围；</li>
+<li>记录 Query、召回、Rerank、引用、Token、延迟和错误；</li>
+<li>离线黄金集与在线反馈共同驱动改进；</li>
+<li>敏感字段脱敏、审计日志和数据保留策略。</li>
+</ul>
+<h2 id="证据质量与模型规模的取舍">证据质量与模型规模的取舍</h2>
+<p>当正确证据已经被检索出来，生成任务可能主要是抽取、归纳、改写或结构化输出，小模型可以以更低延迟和成本完成。但“小模型更听话、更不幻觉”不是普遍规律，效果取决于上下文长度、任务复杂度、语言、指令遵循和训练数据。</p>
+<h3 id="适合-slm-的场景">适合 SLM 的场景</h3>
+<ul>
+<li>固定 Schema 抽取与分类；</li>
+<li>单文档、短上下文问答；</li>
+<li>高并发、低延迟的内部助手；</li>
+<li>边缘部署或敏感数据本地推理；</li>
+<li>通过蒸馏针对特定任务优化；</li>
+<li>Router 已把复杂问题分配给更强模型。</li>
+</ul>
+<h3 id="仍需要较大模型的场景">仍需要较大模型的场景</h3>
+<ul>
+<li>多文档冲突消解和跨文档推理；</li>
+<li>多跳检索、复杂规划和工具协同；</li>
+<li>长上下文中的细粒度证据整合；</li>
+<li>低资源语言或专业领域理解；</li>
+<li>高质量解释与开放式写作。</li>
+</ul>
+<h3 id="评估方式">评估方式</h3>
+<p>不要只比较单题准确率，还要看：任务成功率、引用正确性、拒答率、TTFT/TPOT、单位请求成本、峰值并发和升级到大模型的比例。</p>
+<h2 id="推理计算的收益与事实性边界">推理计算的收益与事实性边界</h2>
+<p>CoT 通过产生中间步骤，为多步算术、符号推理和规划提供更多测试时计算，使模型不必在一次 token 跳转中直接得到结论。它的代价是输出 token、延迟和错误传播增加，而且生成的解释未必忠实反映模型真实决策过程。</p>
+<h3 id="更完整的理解">更完整的理解</h3>
+<ul>
+<li>Few-shot CoT 提供带推导的示例；</li>
+<li>Zero-shot CoT 使用类似“分步骤思考”的提示；</li>
+<li>Self-consistency 采样多条推理路径后对答案投票；</li>
+<li>Reasoning Model 可能在训练和推理阶段使用更长的内部推理；</li>
+<li>Agent scratchpad 可以记录计划和工具观察，但不等于应向用户展示全部内部推理。</li>
+</ul>
+<p>现代产品通常向用户提供简洁、可验证的理由或计算步骤，而不是暴露原始隐藏推理。系统安全也不能依赖“隐藏 CoT”：敏感信息不应进入模型可见上下文，System Prompt、工具和数据还需独立权限保护。</p>
+<h3 id="代价和风险">代价和风险</h3>
+<ul>
+<li>Token 与延迟上升；</li>
+<li>错误中间步骤会锚定后续答案；</li>
+<li>推理文本可能听起来合理但并不 faithful；</li>
+<li>对简单问题强制 CoT 反而增加噪声；</li>
+<li>将内部敏感上下文复制到可见解释会造成泄露。</li>
+</ul>
+<h2 id="参考资料">参考资料</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2005.11401" target="_blank" rel="noopener noreferrer">Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks</a></li>
+<li><a href="https://arxiv.org/abs/2201.11903" target="_blank" rel="noopener noreferrer">Chain-of-Thought Prompting Elicits Reasoning in Large Language Models</a></li>
+<li><a href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noopener noreferrer">ReAct: Synergizing Reasoning and Acting in Language Models</a></li>
+</ul>
+<p>参考了 <a href="https://zhuanlan.zhihu.com/p/2022080840163673941" target="_blank" rel="noopener noreferrer">Shard Zhang 对 LLM 相关问题的整理</a>，并围绕机制、适用条件与工程取舍展开。</p></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#agent">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><span></span><a href="/blog/agent/tool-calling"><small>下一篇 →</small><span>工具调用：模型意图、执行权限与系统评估</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#幻觉来自哪一层">幻觉来自哪一层</a></li><li><a href="#从检索到引用的失败链路">从检索到引用的失败链路</a></li><li><a href="#把-rag-组织成可维护的系统">把 RAG 组织成可维护的系统</a></li><li><a href="#证据质量与模型规模的取舍">证据质量与模型规模的取舍</a></li><li><a href="#推理计算的收益与事实性边界">推理计算的收益与事实性边界</a></li><li><a href="#参考资料">参考资料</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

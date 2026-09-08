@@ -1,0 +1,86 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Plot activation functions and derivatives with Python · Junhao Wei</title><meta name="description" content="Plotting a function beside its derivative connects forward representations with backward gradients."><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/ml_systems/plot-activation-functions/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/ml_systems/plot-activation-functions/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/ml_systems/plot-activation-functions/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/ml_systems/plot-activation-functions/"><meta property="og:title" content="Plot activation functions and derivatives with Python · Junhao Wei"><meta property="og:description" content="Plotting a function beside its derivative connects forward representations with backward gradients."><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/ml_systems/plot-activation-functions/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/ml_systems/plot-activation-functions" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/ml_systems/plot-activation-functions" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/ml_systems/plot-activation-functions" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#ml_systems">Machine learning systems</a></nav><header class="article-header"><p class="eyebrow ">ML SYSTEMS / Reproducible code</p><h1>Plot activation functions and derivatives with Python</h1><p class="article-description">Plotting a function beside its derivative connects forward representations with backward gradients.</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 2 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>Plotting a function beside its derivative connects forward representations with backward gradients. This script samples five activations over a fixed interval, uses consistent colors across both panels, and saves a scalable vector figure. Expressions, derivatives, and axis ranges are preserved for reproducibility.</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/c7ca9e6e99a2e2319bb9.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="Plot activation functions and derivatives with Python: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/c7ca9e6e99a2e2319bb9.svg" alt="Plot activation functions and derivatives with Python: mechanism diagram (original labels)" width="448" height="549" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart LR
+    X["在区间内均匀采样 x"] --> F["计算五种激活函数"]
+    X --> D["计算对应导数"]
+    F --> P["左图绘制函数值"]
+    D --> Q["右图绘制导数"]
+    P --> S["统一配色、坐标与网格"]
+    Q --> S
+    S --> O["保存 activation_functions.svg"]
+</code></pre></details></div>
+<p>Each function uses the same color in both panels. SVG output scales with the page. The script explicitly chooses a plotted derivative value for ReLU at zero; this convention does not make the function mathematically differentiable there.</p>
+<h2 id="函数值与导数">Function values and derivatives</h2>
+<figure class="article-figure"><a href="/figures/activation_functions.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="Common activation functions and their derivatives: View full-size image"><img src="/figures/activation_functions.svg" alt="Common activation functions and their derivatives" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure>
+<h2 id="复现方法">Reproduction</h2>
+<p>Run the script in a Python environment with NumPy and Matplotlib. It writes <code>activation_functions.svg</code> in the same directory. ReLU is nondifferentiable at zero; the figure uses zero as a plotting convention at that point.</p>
+<h2 id="完整代码">Complete code</h2>
+<pre><code class="hljs language-python"><span class="hljs-keyword">from</span> pathlib <span class="hljs-keyword">import</span> Path
+
+<span class="hljs-keyword">import</span> matplotlib.pyplot <span class="hljs-keyword">as</span> plt
+<span class="hljs-keyword">import</span> numpy <span class="hljs-keyword">as</span> np
+<span class="hljs-keyword">from</span> math <span class="hljs-keyword">import</span> erf
+
+
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">normal_cdf</span>(<span class="hljs-params">x: np.ndarray</span>) -> np.ndarray:
+    <span class="hljs-keyword">return</span> <span class="hljs-number">0.5</span> * (<span class="hljs-number">1.0</span> + np.vectorize(erf)(x / np.sqrt(<span class="hljs-number">2.0</span>)))
+
+
+x = np.linspace(-<span class="hljs-number">6.0</span>, <span class="hljs-number">6.0</span>, <span class="hljs-number">1201</span>)
+sigmoid = <span class="hljs-number">1.0</span> / (<span class="hljs-number">1.0</span> + np.exp(-x))
+tanh = np.tanh(x)
+relu = np.maximum(x, <span class="hljs-number">0.0</span>)
+phi = np.exp(-<span class="hljs-number">0.5</span> * x**<span class="hljs-number">2</span>) / np.sqrt(<span class="hljs-number">2.0</span> * np.pi)
+gelu = x * normal_cdf(x)
+silu = x * sigmoid
+
+curves = {
+    <span class="hljs-string">"Sigmoid"</span>: (sigmoid, sigmoid * (<span class="hljs-number">1.0</span> - sigmoid)),
+    <span class="hljs-string">"Tanh"</span>: (tanh, <span class="hljs-number">1.0</span> - tanh**<span class="hljs-number">2</span>),
+    <span class="hljs-string">"ReLU"</span>: (relu, (x > <span class="hljs-number">0.0</span>).astype(<span class="hljs-built_in">float</span>)),
+    <span class="hljs-string">"GELU"</span>: (gelu, normal_cdf(x) + x * phi),
+    <span class="hljs-string">"SiLU"</span>: (silu, sigmoid + x * sigmoid * (<span class="hljs-number">1.0</span> - sigmoid)),
+}
+
+colors = {
+    <span class="hljs-string">"Sigmoid"</span>: <span class="hljs-string">"#3366CC"</span>,
+    <span class="hljs-string">"Tanh"</span>: <span class="hljs-string">"#109618"</span>,
+    <span class="hljs-string">"ReLU"</span>: <span class="hljs-string">"#DC3912"</span>,
+    <span class="hljs-string">"GELU"</span>: <span class="hljs-string">"#990099"</span>,
+    <span class="hljs-string">"SiLU"</span>: <span class="hljs-string">"#FF9900"</span>,
+}
+
+plt.rcParams.update(
+    {
+        <span class="hljs-string">"font.size"</span>: <span class="hljs-number">10</span>,
+        <span class="hljs-string">"axes.titlesize"</span>: <span class="hljs-number">12</span>,
+        <span class="hljs-string">"axes.labelsize"</span>: <span class="hljs-number">10</span>,
+        <span class="hljs-string">"legend.fontsize"</span>: <span class="hljs-number">9</span>,
+        <span class="hljs-string">"svg.fonttype"</span>: <span class="hljs-string">"none"</span>,
+    }
+)
+
+fig, axes = plt.subplots(<span class="hljs-number">1</span>, <span class="hljs-number">2</span>, figsize=(<span class="hljs-number">11.2</span>, <span class="hljs-number">4.2</span>), constrained_layout=<span class="hljs-literal">True</span>)
+
+<span class="hljs-keyword">for</span> name, (value, derivative) <span class="hljs-keyword">in</span> curves.items():
+    axes[<span class="hljs-number">0</span>].plot(x, value, label=name, color=colors[name], linewidth=<span class="hljs-number">2.0</span>)
+    axes[<span class="hljs-number">1</span>].plot(x, derivative, label=name, color=colors[name], linewidth=<span class="hljs-number">2.0</span>)
+
+<span class="hljs-keyword">for</span> axis <span class="hljs-keyword">in</span> axes:
+    axis.axhline(<span class="hljs-number">0.0</span>, color=<span class="hljs-string">"#666666"</span>, linewidth=<span class="hljs-number">0.8</span>)
+    axis.axvline(<span class="hljs-number">0.0</span>, color=<span class="hljs-string">"#666666"</span>, linewidth=<span class="hljs-number">0.8</span>)
+    axis.grid(<span class="hljs-literal">True</span>, color=<span class="hljs-string">"#D9D9D9"</span>, linewidth=<span class="hljs-number">0.7</span>, alpha=<span class="hljs-number">0.8</span>)
+    axis.set_xlim(-<span class="hljs-number">6.0</span>, <span class="hljs-number">6.0</span>)
+    axis.set_xlabel(<span class="hljs-string">"Input x"</span>)
+
+axes[<span class="hljs-number">0</span>].set_title(<span class="hljs-string">"Activation values"</span>)
+axes[<span class="hljs-number">0</span>].set_ylabel(<span class="hljs-string">"f(x)"</span>)
+axes[<span class="hljs-number">0</span>].set_ylim(-<span class="hljs-number">2.0</span>, <span class="hljs-number">6.0</span>)
+axes[<span class="hljs-number">1</span>].set_title(<span class="hljs-string">"Activation derivatives"</span>)
+axes[<span class="hljs-number">1</span>].set_ylabel(<span class="hljs-string">"f'(x)"</span>)
+axes[<span class="hljs-number">1</span>].set_ylim(-<span class="hljs-number">0.2</span>, <span class="hljs-number">1.2</span>)
+axes[<span class="hljs-number">1</span>].legend(loc=<span class="hljs-string">"upper left"</span>, ncol=<span class="hljs-number">2</span>, frameon=<span class="hljs-literal">True</span>)
+
+output = Path(__file__).with_name(<span class="hljs-string">"activation_functions.svg"</span>)
+fig.savefig(output, <span class="hljs-built_in">format</span>=<span class="hljs-string">"svg"</span>, bbox_inches=<span class="hljs-string">"tight"</span>)
+<span class="hljs-built_in">print</span>(output)
+</code></pre></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#ml_systems">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><a href="/en/blog/ml_systems/loss-functions"><small>← Previous</small><span>Loss Functions: Label Structure, Gradients, and Task Metrics</span></a><span></span></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#函数值与导数">Function values and derivatives</a></li><li><a href="#复现方法">Reproduction</a></li><li><a href="#完整代码">Complete code</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

@@ -1,0 +1,112 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LLM推論：KV Cache・連続バッチ処理・配信性能 · 韋 君豪</title><meta name="description" content="推論の最適化は生成速度一つでは測れません。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/ml_systems/llm-inference/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/ml_systems/llm-inference/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/ml_systems/llm-inference/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/ml_systems/llm-inference/"><meta property="og:title" content="LLM推論：KV Cache・連続バッチ処理・配信性能 · 韋 君豪"><meta property="og:description" content="推論の最適化は生成速度一つでは測れません。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/ml_systems/llm-inference/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/ml_systems/llm-inference" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/ml_systems/llm-inference" lang="en" hrefLang="en">EN</a><a href="/ja/blog/ml_systems/llm-inference" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#ml_systems">機械学習システム</a></nav><header class="article-header"><p class="eyebrow ">ML SYSTEMS / 学習ノート</p><h1>LLM推論：KV Cache・連続バッチ処理・配信性能</h1><p class="article-description">推論の最適化は生成速度一つでは測れません。</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 5 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>推論の最適化は生成速度一つでは測れません。長い入力のPrefill、逐次生成時のキャッシュ参照、複数リクエストでデバイスを共有するスケジューリングが、遅延、処理量、メモリを左右します。費用の発生箇所を分けてから、キャッシュ、量子化、バッチ、並列化がどのボトルネックを解くか判断します。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/69c6c0a5a59f789c06b7.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="LLM推論：KV Cache・連続バッチ処理・配信性能: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/69c6c0a5a59f789c06b7.svg" alt="LLM推論：KV Cache・連続バッチ処理・配信性能: 仕組みの図（原文のラベル）" width="488" height="897" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart LR
+    Q["等待队列"] --> S["调度器"]
+    S --> P["Prefill：处理输入并建立 KV"]
+    P --> K["活动请求的 KV 缓存"]
+    S --> D["Decode：计算新 token"]
+    K --> D
+    D --> K
+    D --> C{"请求是否结束"}
+    C -->|"否"| S
+    C -->|"是"| R["回收 KV 块与调度槽位"]
+    R --> S
+</code></pre></details></div>
+<p>連続バッチ処理は固定した一組の完了を待たず、生成反復の間で実行中のリクエストを入れ替えます。ただしPrefillとDecodeは資源を競合するため、スループットが増えても初回出力や裾の遅延が下がるとは限りません。</p>
+<h2 id="kv-cache-消除的是历史前向的重复计算">KV Cacheが除くのは過去の再計算</h2>
+<p>トークン <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi></mrow><annotation encoding="application/x-tex">t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6151em;"></span><span class="mord mathnormal">t</span></span></span></span> の生成時、過去 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">t-1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6984em;vertical-align:-0.0833em;"></span><span class="mord mathnormal">t</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.6444em;"></span><span class="mord">1</span></span></span></span> トークンの各層のKeyとValueは変わりません。これらを保存し、新しいトークンのQ/K/Vだけを計算して、蓄積したKey/Valueを参照します。接頭辞全体の再実行を避けられます。</p>
+<h3 id="计算与显存">計算量とメモリ</h3>
+<p>キャッシュがなければ、毎回長くなる全系列を再計算します。キャッシュ後は過去の射影や前段の計算を繰り返しません。ただし新Queryは <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>t</mi></mrow><annotation encoding="application/x-tex">t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6151em;"></span><span class="mord mathnormal">t</span></span></span></span> 個のKeyと計算するため、一段階のAttentionは約 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>t</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(t)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.0278em;">O</span><span class="mopen">(</span><span class="mord mathnormal">t</span><span class="mclose">)</span></span></span></span>、生成全体は約 <span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><msup><mi>T</mi><mn>2</mn></msup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(T^2)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0641em;vertical-align:-0.25em;"></span><span class="mord mathnormal" style="margin-right:0.0278em;">O</span><span class="mopen">(</span><span class="mord"><span class="mord mathnormal" style="margin-right:0.1389em;">T</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> です。過去の順伝播を省くのであって、すべてのAttentionを厳密に線形にするわけではありません。</p>
+<p>KVメモリの概算は次です。</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msub><mi>M</mi><mrow><mi>K</mi><mi>V</mi></mrow></msub><mo>=</mo><mn>2</mn><mo>×</mo><mi>L</mi><mo>×</mo><mi>T</mi><mo>×</mo><msub><mi>H</mi><mrow><mi>k</mi><mi>v</mi></mrow></msub><mo>×</mo><msub><mi>d</mi><mrow><mi>h</mi><mi>e</mi><mi>a</mi><mi>d</mi></mrow></msub><mo>×</mo><mi>b</mi><mo>×</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">M_{KV}=2\times L\times T\times H_{kv}\times d_{head}\times b\times B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em;">M</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em;"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0715em;">K</span><span class="mord mathnormal mtight" style="margin-right:0.2222em;">V</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em;"></span><span class="mord mathnormal">L</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em;"></span><span class="mord mathnormal" style="margin-right:0.1389em;">T</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0813em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0315em;">k</span><span class="mord mathnormal mtight" style="margin-right:0.0359em;">v</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.8444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">h</span><span class="mord mathnormal mtight">e</span><span class="mord mathnormal mtight">a</span><span class="mord mathnormal mtight">d</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em;"></span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.0502em;">B</span></span></span></span></span>
+<p>2はK/V、<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>L</mi></mrow><annotation encoding="application/x-tex">L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal">L</span></span></span></span> は層数、<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>T</mi></mrow><annotation encoding="application/x-tex">T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.1389em;">T</span></span></span></span> は保存長、<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><msub><mi>H</mi><mrow><mi>k</mi><mi>v</mi></mrow></msub></mrow><annotation encoding="application/x-tex">H_{kv}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0813em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0315em;">k</span><span class="mord mathnormal mtight" style="margin-right:0.0359em;">v</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> はKVヘッド数、<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>b</mi></mrow><annotation encoding="application/x-tex">b</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6944em;"></span><span class="mord mathnormal">b</span></span></span></span> は要素のバイト数、<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>B</mi></mrow><annotation encoding="application/x-tex">B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.0502em;">B</span></span></span></span> は同時系列数です。</p>
+<h3 id="优化方式">最適化の方法</h3>
+<ul>
+<li><strong>MQA/GQA：</strong> 複数のQueryヘッドで少数のKVヘッドを共有する。</li>
+<li><strong>KV量子化：</strong> FP8/INT8などで保存精度を下げる。</li>
+<li><strong>Paged KV Cache：</strong> ページ単位で確保し、予約領域の無駄や断片化を減らす。</li>
+<li><strong>Sliding Window/Chunked Attention：</strong> 参照する履歴を限定する。</li>
+<li><strong>Prefix Cache：</strong> 同一のプロンプト接頭辞をリクエスト間で再利用する。</li>
+<li><strong>KV Offload：</strong> CPUなどへ移し、転送費用と引き換えに容量を空ける。</li>
+</ul>
+<h2 id="性能必须同时看延迟吞吐与成本">遅延・処理量・費用を合わせて見る</h2>
+<p>遅延、スループット、同時実行、メモリ、単価を測り、PrefillとDecodeを区別します。tokens/sだけでなく、単一リクエストかデバイス全体か、入出力長、バッチ、分位点を示す必要があります。</p>
+<h3 id="核心指标">主な指標</h3>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>意味</th>
+<th>主な要因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TTFT</td>
+<td>到着から最初の出力トークンまで</td>
+<td>待ち行列、入力長、Prefill、スケジューリング</td>
+</tr>
+<tr>
+<td>TPOT / ITL</td>
+<td>出力トークン間の平均時間</td>
+<td>Decode、KV帯域、バッチ、通信</td>
+</tr>
+<tr>
+<td>E2E遅延</td>
+<td>回答全体の所要時間</td>
+<td>TTFT＋出力長×TPOT</td>
+</tr>
+<tr>
+<td>リクエスト処理量</td>
+<td>毎秒の完了リクエスト数</td>
+<td>長さ分布、バッチ、スケジューリング</td>
+</tr>
+<tr>
+<td>トークン処理量</td>
+<td>毎秒の総生成トークン数</td>
+<td>GPU利用率、並列化、カーネル</td>
+</tr>
+<tr>
+<td>同時実行数</td>
+<td>同時に扱う活動中の系列数</td>
+<td>KV Cache、メモリ、スケジューリング</td>
+</tr>
+<tr>
+<td>リクエスト単価</td>
+<td>GPU時間または金銭的費用</td>
+<td>モデル、長さ、キャッシュ、利用率</td>
+</tr>
+</tbody>
+</table>
+<p>トークン効率は、成功したタスク当たりの入出力数、キャッシュ命中、再試行、成功一件の費用にも分解できます。</p>
+<h3 id="典型权衡">典型的なトレードオフ</h3>
+<ul>
+<li>大きいバッチは総処理量を増やしやすいが、待ち時間や個別遅延も増え得る。</li>
+<li>Tensor Parallelは大モデルを載せられるが、デバイス間通信を伴う。</li>
+<li>長い文脈はPrefillとKV容量を増やす。</li>
+<li>量子化はメモリ・帯域を節約するが、品質とカーネル対応の確認が必要。</li>
+<li>Speculative DecodingはDraft側の計算を追加し、Target側の生成反復を減らす。</li>
+</ul>
+<h2 id="连续批处理与请求调度">連続バッチ処理とスケジューリング</h2>
+<p>Static Batchingでは一組を固定し、全体が終わるまで資源を保持する場合があります。短い出力が長い出力に引きずられます。Continuous Batchingは反復ごとに完了系列を除き、空いた枠へ新規リクエストを入れてGPUとキャッシュを活用します。</p>
+<h3 id="执行方式">実行の流れ</h3>
+<pre><code class="language-text">等待队列
+  → Scheduler 选择可进入的 Prefill/Decode 请求
+  → 执行一个或若干 iteration
+  → 回收已结束请求的 KV block
+  → 加入新请求
+  → 下一 iteration
+</code></pre>
+<p>PagedAttentionやPaged KV Cacheと組み合わせ、各系列に最大の連続領域を予約せず、ブロック単位で動的に確保します。内部断片化を減らし、柔軟な入れ替えを可能にします。</p>
+<h3 id="调度难点">スケジューリングの難しさ</h3>
+<ul>
+<li>長い入力のPrefillがDecodeを妨げ、TPOTが揺れる。</li>
+<li>TTFTと生成中の滑らかさの優先順位を決める必要がある。</li>
+<li>長さやサンプリング設定によりバッチ形状が変わる。</li>
+<li>Prefix Cache、LoRA Adapter、テナント優先度が制約を増やす。</li>
+<li>高処理量と低い裾の遅延は同義ではなく、p95/p99を確認する。</li>
+</ul>
+<h2 id="参考资料">参考資料</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2309.06180" target="_blank" rel="noopener noreferrer">Efficient Memory Management for Large Language Model Serving with PagedAttention</a></li>
+</ul>
+<p><a href="https://zhuanlan.zhihu.com/p/2022080840163673941" target="_blank" rel="noopener noreferrer">Shard ZhangによるLLM関連質問の整理</a>も参考に、仕組み、適用条件、実装上の選択を説明しています。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#ml_systems">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><span></span><a href="/ja/blog/ml_systems/lora"><small>次の記事 →</small><span>LoRA：低ランク更新、量子化基盤、適応的な予算配分</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#kv-cache-消除的是历史前向的重复计算">KV Cacheが除くのは過去の再計算</a></li><li><a href="#性能必须同时看延迟吞吐与成本">遅延・処理量・費用を合わせて見る</a></li><li><a href="#连续批处理与请求调度">連続バッチ処理とスケジューリング</a></li><li><a href="#参考资料">参考資料</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

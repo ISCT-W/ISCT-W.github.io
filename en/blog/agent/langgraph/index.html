@@ -1,0 +1,107 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LangGraph: State, Recovery, and Long-Running Execution · Junhao Wei</title><meta name="description" content="Long workflows must do more than choose the next function."><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/agent/langgraph/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/langgraph/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/langgraph/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/langgraph/"><meta property="og:title" content="LangGraph: State, Recovery, and Long-Running Execution · Junhao Wei"><meta property="og:description" content="Long workflows must do more than choose the next function."><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/agent/langgraph/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/langgraph" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/agent/langgraph" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/agent/langgraph" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#agent">Agent applications</a></nav><header class="article-header"><p class="eyebrow ">AGENT / Study notes</p><h1>LangGraph: State, Recovery, and Long-Running Execution</h1><p class="article-description">Long workflows must do more than choose the next function.</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 9 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>Long workflows must do more than choose the next function. They preserve progress, merge parallel updates, wait for people, and determine which operations can safely repeat after failure. LangGraph organizes these behaviors through graph state and persistence. Execution snapshots, model context, and external side effects must remain distinct: resuming does not simply continue at the next line after a pause.</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/f04b89d6110684d31799.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="LangGraph: State, Recovery, and Long-Running Execution: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/f04b89d6110684d31799.svg" alt="LangGraph: State, Recovery, and Long-Running Execution: mechanism diagram (original labels)" width="587" height="1181" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart TD
+    S["读取当前图状态"] --> N["激活节点执行"]
+    N --> U["返回状态更新"]
+    U --> R["按 Reducer 合并并行更新"]
+    R --> C["保存 Checkpoint 与下一步信息"]
+    C --> D{"继续、结束或等待人工输入"}
+    D -->|"继续"| S
+    D -->|"结束"| E["交付结果"]
+    D -->|"等待输入"| H["相同 Thread 接收恢复值"]
+    H --> P["恢复相关节点；保护可重放边界"]
+    P --> N
+</code></pre></details></div>
+<p>State and execution progress are persisted, not arbitrary local variables. An interrupt saves the information needed to pause; the relevant node runs again on resume, so side effects need safe replay boundaries.</p>
+<p>This article follows official Python documentation from August 2026. Verify persistence modes and streaming interfaces against your version.</p>
+<h2 id="状态与更新协议">State and update protocols</h2>
+<h3 id="statenode-与-edge-的执行约定">The contract between state, nodes, and edges</h3>
+<p>State defines a shared snapshot and schema. Nodes read it and return changed fields, not necessarily the complete state. Edges select subsequent nodes. Store stable facts and control fields needed by the workflow, rather than temporary objects, connections, and duplicate large texts.</p>
+<h3 id="编译图与运行时配置">Compilation and runtime configuration</h3>
+<p>Compilation turns the builder into an executable graph, checks basic structure, and binds settings such as checkpointers, stores, and breakpoints. It neither trains a model nor compiles Python into machine code. Usually compile once at process startup and reuse, rather than rebuilding graphs and database connections per request.</p>
+<h3 id="状态-schema-的校验与开销">Schema validation and overhead</h3>
+<p><code>TypedDict</code> is lightweight, dataclasses support defaults, and Pydantic offers stronger runtime validation/conversion with added overhead. Choose according to validation and performance needs. Returned updates, external tool results, and old checkpoints still require business validation; annotations alone do not prevent invalid data.</p>
+<h3 id="reducer-定义状态合并语义">Reducers define merge semantics</h3>
+<p>A reducer combines an existing field with an update. Without one, updates usually replace values. List-like fields may append, deduplicate, or update by ID. Prefer deterministic reducers and consider order dependence. Concurrent writes to one field without appropriate merge semantics can conflict or become unpredictable.</p>
+<h3 id="消息合并需要识别身份与删除">Message merging needs identity and deletion</h3>
+<p>List concatenation cannot replace messages by ID or correctly handle deletion. Message reducers deserialize inputs and support append, replacement, and <code>RemoveMessage</code>. These semantics matter for streaming calls, human history edits, and context compression.</p>
+<h2 id="路由并行与终止条件">Routing, parallelism, and termination</h2>
+<h3 id="路由边与-command-的适用边界">Routing edges versus Command</h3>
+<p>Conditional edges use separate routing functions. <code>Command</code> returns state updates and <code>goto</code> together when updates and routing are tightly coupled. Prefer edges for pure routing and avoid arbitrary jumps from every node, which conceal control flow.</p>
+<h3 id="send-与动态任务展开">Send and dynamic fan-out</h3>
+<p><code>Send</code> creates downstream tasks dynamically, commonly for map–reduce. Bound fan-out, concurrency, per-task timeout, and aggregate size; unlimited user-controlled expansion can exhaust resources and budgets.</p>
+<h3 id="super-step-的并行执行模型">Parallel execution in super-steps</h3>
+<p>The Pregel-like runtime can run several active independent tasks in one super-step, merge their updates, and choose the next set. Two outgoing edges do not imply serial execution in source order. Parallel nodes must avoid undeclared dependencies and unsafe side effects.</p>
+<h3 id="并行写入的冲突与确定性合并">Conflicting writes and deterministic joins</h3>
+<p>Different fields can update independently. Multiple writes to one field need a compatible reducer or can trigger an update error. Split fields, define a business-appropriate reducer, return ID-tagged results for a deterministic join node, or make the steps explicitly serial.</p>
+<h3 id="用多层预算限制循环">Bound loops with several budgets</h3>
+<p>Use graph step/recursion limits, tool-call limits, time/token/cost budgets, repeated tool-and-argument detection, no-progress detection, and explicit terminal/failure states. On exhaustion, return an understandable partial result or request human intervention rather than exposing an internal exception alone.</p>
+<h2 id="执行轨迹与记忆">Execution history and memory</h2>
+<h3 id="threadcheckpoint-与持久化组件">Threads, checkpoints, and persistence</h3>
+<p>A checkpointer saves and loads snapshots. A thread is an independent execution/conversation identified by <code>thread_id</code>. Checkpoints include state values, next nodes, tasks, and metadata. A stable ID continues an existing conversation; a new ID starts new state. Verify user/tenant ownership in production.</p>
+<h3 id="执行快照与跨会话数据">Execution snapshots versus cross-conversation data</h3>
+<p>Checkpointers store per-thread graph state for short-term memory, recovery, human intervention, time travel, and fault tolerance. Stores hold application-defined cross-thread preferences or facts. Tools already called belong in execution state; a language preference can live in a store. Long-term facts need sources, timestamps, access control, and deletion.</p>
+<h3 id="短期记忆长期事实与数据生命周期">Memory lifecycle</h3>
+<p>Short-term memory typically comprises persisted thread messages and fields; long-term memory is retrieved from user/namespace-scoped stores. More memory is not always better. Check relevance, authorization, sensitivity, scope, expiry, and deletion before writing.</p>
+<h3 id="完整历史与模型可见上下文">Full history versus model-visible context</h3>
+<p>Persisting history does not mean sending all of it to the model. Trim by token count, remove low-value tool results, summarize older exchanges, extract durable facts, or retrieve relevant history. Summaries can omit or invent details, so separate audit records, model context, and long-term memory.</p>
+<h2 id="人工介入与故障恢复">Human intervention and recovery</h2>
+<h3 id="人工介入的暂停与恢复协议">Pause and resume protocols</h3>
+<p><code>interrupt(payload)</code> saves the relevant state through a checkpointer and returns a serializable payload. After human input, reinvoke with the same <code>thread_id</code> and <code>Command(resume=value)</code>; that value becomes the interrupt's return value. Use durable storage and stable IDs, and show an action summary, resources, and parameters in approval payloads rather than merely asking for agreement.</p>
+<h3 id="恢复时的节点重放与副作用">Node replay and side effects</h3>
+<p>The interrupted node restarts from its beginning, including code before <code>interrupt()</code>. Email, charges, or writes there can repeat. Move effects after approval or isolate them in persisted tasks with idempotency keys/unique constraints. Local variables are not preserved as a suspended stack frame.</p>
+<h3 id="持久执行依赖幂等边界">Durable execution needs idempotent boundaries</h3>
+<p>Saved progress allows continuation after restart, failure, or pauses. Nondeterministic calls and effects need persisted task/node boundaries. A task started but not confirmed complete can run again; writes, payments, and messages require idempotency, status checks, or a transactional outbox.</p>
+<h3 id="并行步骤中的-pending-writes">Pending writes in parallel steps</h3>
+<p>If one parallel node fails, successful sibling writes can be saved as pending writes. Recovery can retry only failed work. This reduces repeated model/API calls but does not replace external idempotency: a recorded state write and an external request's completion are different facts.</p>
+<h3 id="历史回放分叉与状态更新">Replay, forks, and state updates</h3>
+<p>Replay executes nodes after an old checkpoint. Fork changes state from an old checkpoint to create a new trajectory. <code>update_state</code> creates a new checkpoint instead of altering history. Earlier results are generally reused, while later model calls, APIs, and interrupts run again and may differ. Isolate external effects or make them idempotent during time-travel debugging.</p>
+<h2 id="子图中的状态边界">State boundaries in subgraphs</h2>
+<h3 id="子图的封装与持久化模式">Encapsulation and persistence modes</h3>
+<p>Subgraphs encapsulate reusable work or specialist agents. In the referenced documentation, <code>None</code> uses per-invocation state and inherits parent capabilities; <code>True</code> retains per-thread subgraph state; <code>False</code> disables persistence and associated interrupts/durable execution. Give cross-turn memory only where needed to avoid state contamination and namespace conflicts.</p>
+<h2 id="交付观测与安全">Delivery, observability, and security</h2>
+<h3 id="流式事件与前端状态">Streaming events and frontend state</h3>
+<p>Modes include <code>updates</code> for deltas, <code>values</code> for full state, <code>messages</code> for LLM chunks and metadata, <code>custom</code> for business progress, <code>checkpoints</code>, <code>tasks</code>, and fuller <code>debug</code> events. Checkpoint and task modes require a checkpointer. Frontends often combine tokens, tool status, and progress. Stream public status summaries rather than internal chain-of-thought.</p>
+<h3 id="异步并发与流式交付的区别">Async, concurrency, and streaming are different</h3>
+<p>Async permits other work while waiting for I/O; concurrency overlaps tasks; streaming delivers partial results. Combine them as needed, with semaphores, connection pools, provider limits, queues, and backpressure. Decide whether client disconnection cancels model/tool work to avoid unintended resource use.</p>
+<h3 id="错误分类与局部恢复">Classify errors and recover locally</h3>
+<p>Retry transient network/rate failures with backoff. Permit bounded correction of schema/argument errors. Do not retry permission or business-rule failures. Unknown system faults enter failure or human-handling paths. Retry at the smallest safe boundary, set node/tool timeouts, preserve error types and traces, and use only capability-compatible fallbacks. Check whether effects already occurred before recovery.</p>
+<h3 id="从执行轨迹到分层评估">From traces to layered evaluation</h3>
+<p>Trace model calls, prompt versions, tools and results, node paths, tokens, latency, errors, and useful metadata. Redact sensitive information; tenant IDs belong in access control, not public labels.</p>
+<p>Evaluate task success, tool selection and arguments, unnecessary steps, RAG recall/citations/groundedness, structured-output validity, appropriate human escalation, p50/p95 latency, tokens, cost, failures, prompt injection, authorization, and effect safety. Golden datasets support regression; live traces and feedback reveal new cases. Calibrate LLM judges with human examples instead of treating them as sole ground truth.</p>
+<h3 id="对检索工具与状态设置安全边界">Security boundaries for retrieval, tools, and state</h3>
+<p>Risks include document prompt injection, unauthorized tools, argument injection, cross-tenant state/cache leaks, sensitive traces, unsafe retries, SSRF, SQL injection, and path traversal. Treat model output as untrusted; use tool allowlists and strict schemas, reauthorize execution, separate read/write privileges, approve high-risk actions, scope cache keys by permission, separate document data from system instructions, and validate SQL/shell/URL inputs deterministically.</p>
+<h2 id="验证实现的执行约定">Verify the execution contract</h2>
+<p>Check these implementation details:</p>
+<ol>
+<li>State fields and the reason for each reducer.</li>
+<li>Thread-ID generation and user/session binding.</li>
+<li>Checkpoint storage and recovery after process restart.</li>
+<li>Code replayed after interrupts and effect idempotency.</li>
+<li>Tool schemas, permissions, timeouts, and errors.</li>
+<li>Parallel joins and conflicting updates.</li>
+<li>Frontend event types and disconnection behavior.</li>
+<li>Loop, token, cost, and concurrency limits.</li>
+<li>Traces that locate an incorrect tool call.</li>
+<li>Regression datasets and metrics before release.</li>
+</ol>
+<p>Keep concrete debugging evidence: inputs, the failing trace step, whether the cause was prompt/tool/state/reducer/permission/model, the correction, and the regression case.</p>
+<p>These boundaries guide recovery and authorization design:</p>
+<pre><code class="language-text">Tool Call ≠ Tool Execution
+State ≠ Runtime Context ≠ Store
+Checkpointer ≠ Long-term Store
+Interrupt Resume ≠ 从断点下一行继续
+可计算/可重试 ≠ 副作用可安全重放
+</code></pre>
+<h2 id="参考资料">References</h2>
+<ul>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api" target="_blank" rel="noopener noreferrer">Graph API</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/persistence" target="_blank" rel="noopener noreferrer">Persistence</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/interrupts" target="_blank" rel="noopener noreferrer">Interrupts</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/add-memory" target="_blank" rel="noopener noreferrer">Memory</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/streaming" target="_blank" rel="noopener noreferrer">Streaming</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/functional-api" target="_blank" rel="noopener noreferrer">Functional API / Durable Execution</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-subgraphs" target="_blank" rel="noopener noreferrer">Subgraphs</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel" target="_blank" rel="noopener noreferrer">Time Travel</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/observability" target="_blank" rel="noopener noreferrer">Observability</a></li>
+<li><a href="https://docs.langchain.com/oss/python/langchain/test/evals" target="_blank" rel="noopener noreferrer">Agent Evaluation</a></li>
+</ul></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#agent">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><a href="/en/blog/agent/langchain"><small>← Previous</small><span>LangChain: Building LLM Applications with Clear Component Boundaries</span></a><span></span></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#状态与更新协议">State and update protocols</a></li><li><a href="#路由并行与终止条件">Routing, parallelism, and termination</a></li><li><a href="#执行轨迹与记忆">Execution history and memory</a></li><li><a href="#人工介入与故障恢复">Human intervention and recovery</a></li><li><a href="#子图中的状态边界">State boundaries in subgraphs</a></li><li><a href="#交付观测与安全">Delivery, observability, and security</a></li><li><a href="#验证实现的执行约定">Verify the execution contract</a></li><li><a href="#参考资料">References</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

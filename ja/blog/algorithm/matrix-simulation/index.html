@@ -1,0 +1,64 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>行列のシミュレーション：未訪問の長方形を縮める · 韋 君豪</title><meta name="description" content="## 一辺を走査するたびに未訪問領域を縮める"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/matrix-simulation/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/matrix-simulation/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/matrix-simulation/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/matrix-simulation/"><meta property="og:title" content="行列のシミュレーション：未訪問の長方形を縮める · 韋 君豪"><meta property="og:description" content="## 一辺を走査するたびに未訪問領域を縮める"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/matrix-simulation/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/matrix-simulation" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/matrix-simulation" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/matrix-simulation" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>行列のシミュレーション：未訪問の長方形を縮める</h1><p class="article-description">## 一辺を走査するたびに未訪問領域を縮める</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 3 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="每走完一条边就缩小未访问区域">一辺を走査するたびに未訪問領域を縮める</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/d6b739f89626cc35aab6.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="行列のシミュレーション：未訪問の長方形を縮める: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/d6b739f89626cc35aab6.svg" alt="行列のシミュレーション：未訪問の長方形を縮める: 仕組みの図（原文のラベル）" width="687" height="1606" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ A{"还有未遍历的行与列？"} -->|否| Z["遍历结束"]
+ A -->|是| B["沿上边从左向右，top 加 1"]
+ B --> C{"top 大于 bottom？"}
+ C -->|是| Z
+ C -->|否| D["沿右边从上向下，right 减 1"]
+ D --> E{"left 大于 right？"}
+ E -->|是| Z
+ E -->|否| F["沿下边从右向左，bottom 减 1"]
+ F --> G{"top 大于 bottom？"}
+ G -->|是| Z
+ G -->|否| H["沿左边从下向上，left 加 1"]
+ H --> A
+</code></pre></details></div>
+<p>一行や一列だけが残った場合は、一度曲がるだけで領域を使い切ることがあります。外側のループの先頭だけで境界を確認しても不十分です。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<p>訪問や移動の規則が与えられ、その順序で出力または行列を変更する問題なら、直接シミュレーションできます。螺旋走査では外側の一辺を訪問するたびに、未訪問領域が小さな長方形として残ります。そのため、各マスに印を付けず四つの境界だけを管理できます。</p>
+<h2 id="把状态和不变量想清楚">状態と不変条件を明確にする</h2>
+<p>位置・方向・境界などの状態、移動規則、訪問のタイミング、終了条件を決めます。ここでは一辺を終えるたびに対応する境界を縮め、残りの領域が有効か確認します。「四つの境界が未訪問領域をちょうど囲む」という不変条件を保ち、最後の一行や一列の重複訪問を防ぎます。</p>
+<h2 id="教学骨架四边界收缩">学習用の骨格：四つの境界を縮める</h2>
+<p>以下は空でない行列の疑似コードです。「一辺を訪問する」は対応するループに展開します。別の行列シミュレーションでは規則に応じた状態を選び、必ずしも四境界で扱えるとは限りません。</p>
+<pre><code class="language-text">top = 0，bottom = 行数-1，left = 0，right = 列数-1
+while top &#x3C;= bottom 且 left &#x3C;= right：
+    访问上边：从左到右；top += 1
+    若区域已空：结束
+    访问右边：从上到下；right -= 1
+    若区域已空：结束
+    访问下边：从右到左；bottom -= 1
+    若区域已空：结束
+    访问左边：从下到上；left += 1
+</code></pre>
+<h2 id="例题螺旋矩阵">例：Spiral Matrix</h2>
+<p>問題：<a href="https://leetcode.cn/problems/spiral-matrix/" target="_blank" rel="noopener noreferrer">LeetCode 54</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">spiralOrder</span>(<span class="hljs-params">self, matrix: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]:
+        ans = []
+        top, left, bottom, right = <span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-built_in">len</span>(matrix) - <span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(matrix[<span class="hljs-number">0</span>]) - <span class="hljs-number">1</span>
+
+        <span class="hljs-keyword">while</span> top &#x3C;= bottom <span class="hljs-keyword">and</span> left &#x3C;= right:
+            <span class="hljs-keyword">if</span> top &#x3C;= bottom:
+                <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(left, right + <span class="hljs-number">1</span>):
+                    ans.append(matrix[top][i])
+                top += <span class="hljs-number">1</span>
+            <span class="hljs-keyword">if</span> left &#x3C;= right:
+                <span class="hljs-keyword">for</span> j <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(top, bottom + <span class="hljs-number">1</span>):
+                    ans.append(matrix[j][right])
+                right -= <span class="hljs-number">1</span>
+            <span class="hljs-keyword">if</span> top &#x3C;= bottom:
+                <span class="hljs-keyword">for</span> k <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(right, left - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>):
+                    ans.append(matrix[bottom][k])
+                bottom -= <span class="hljs-number">1</span>
+            <span class="hljs-keyword">if</span> left &#x3C;= right:
+                <span class="hljs-keyword">for</span> l <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(bottom, top - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>):
+                    ans.append(matrix[l][left])
+                left += <span class="hljs-number">1</span>
+
+        <span class="hljs-keyword">return</span> ans
+        
+                
+
+        
+</code></pre>
+<p><strong>実装のポイント：</strong> 上・右・下・左の順で外周を走査し、<code>top/right/bottom/left</code> を更新します。途中の境界判定は、最後に残る一行や一列を二度訪問しないために必要です。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/linked-list"><small>← 前の記事</small><span>連結リスト：つなぎ替える前に次のノードを保存する</span></a><a href="/ja/blog/algorithm/monotonic-stack"><small>次の記事 →</small><span>単調スタック：現在の要素で過去の候補を確定する</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#每走完一条边就缩小未访问区域">一辺を走査するたびに未訪問領域を縮める</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#把状态和不变量想清楚">状態と不変条件を明確にする</a></li><li><a href="#教学骨架四边界收缩">学習用の骨格：四つの境界を縮める</a></li><li><a href="#例题螺旋矩阵">例：Spiral Matrix</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

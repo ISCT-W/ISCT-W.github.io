@@ -1,0 +1,130 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ツール呼び出し：モデルの意図と実行権限を分ける · 韋 君豪</title><meta name="description" content="ツール呼び出しは、言語モデルに最新情報の取得や具体的な操作を可能にし、アプリケーションを実際の権限境界へ導きます。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/agent/tool-calling/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/tool-calling/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/tool-calling/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/tool-calling/"><meta property="og:title" content="ツール呼び出し：モデルの意図と実行権限を分ける · 韋 君豪"><meta property="og:description" content="ツール呼び出しは、言語モデルに最新情報の取得や具体的な操作を可能にし、アプリケーションを実際の権限境界へ導きます。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/agent/tool-calling/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/tool-calling" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/agent/tool-calling" lang="en" hrefLang="en">EN</a><a href="/ja/blog/agent/tool-calling" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#agent">エージェント応用</a></nav><header class="article-header"><p class="eyebrow ">AGENT / 学習ノート</p><h1>ツール呼び出し：モデルの意図と実行権限を分ける</h1><p class="article-description">ツール呼び出しは、言語モデルに最新情報の取得や具体的な操作を可能にし、アプリケーションを実際の権限境界へ導きます。</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 7 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>ツール呼び出しは、言語モデルに最新情報の取得や具体的な操作を可能にし、アプリケーションを実際の権限境界へ導きます。モデルはツール名と引数を提案し、サーバーは操作の可否、再試行の可否、失敗時の扱いを決めます。この責務を分けることで、柔軟性が制御不能な副作用になるのを防ぎます。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/8bd66eeb24b8cae957d9.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="ツール呼び出し：モデルの意図と実行権限を分ける: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/8bd66eeb24b8cae957d9.svg" alt="ツール呼び出し：モデルの意図と実行権限を分ける: 仕組みの図（原文のラベル）" width="582" height="1100" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+    M["模型生成工具名与参数"] --> S["Schema 与业务语义校验"]
+    S --> A["身份、租户、资源与权限校验"]
+    A --> B["审批、预算、超时与幂等检查"]
+    B --> T["服务端执行工具"]
+    T --> R["结构化结果与证据"]
+    R --> M
+    T --> F["分类记录错误与副作用状态"]
+    F --> D{"是否可安全重试"}
+    D -->|"是"| B
+    D -->|"否"| H["停止、降级或人工处理"]
+</code></pre></details></div>
+<p>ループはモデルが判断を続けられることを表しますが、実行のたびに検証します。エラー時はまず権限、引数、副作用の発生状況を確認します。すべての失敗を再試行可能なネットワーク障害として扱ってはいけません。</p>
+<h2 id="从调用意图到真实执行">呼び出しの意図から実行へ</h2>
+<p>Function Callingでは、モデルがツールSchemaに沿って呼び出し意図を出力し、アプリケーションがAPIを実行して構造化結果を返します。最新データ、計算、業務操作を扱えますが、権限と副作用はサーバーが管理します。</p>
+<h3 id="完整执行链">実行の全体像</h3>
+<pre><code class="language-text">用户问题
+→ 模型选择工具并生成参数
+→ Schema 校验
+→ 身份、租户、权限和审批
+→ 超时、预算与幂等检查
+→ 服务端执行工具
+→ 结构化 tool result
+→ 模型继续规划或生成答案
+→ 保存工具轨迹与证据
+</code></pre>
+<h3 id="为什么不只是生成-json">JSON生成だけでは足りない理由</h3>
+<ul>
+<li>Schemaが検証するのは形であり、業務上の妥当性はサーバーが確認する。</li>
+<li>モデルが出した <code>user_id</code> や <code>project_id</code> を権限の根拠にしない。</li>
+<li>副作用のあるツールには必要に応じた承認、冪等キー、補償処理が必要。</li>
+<li>読み取り専用でもテナント、結果サイズ、機微フィールドを制限する。</li>
+<li>結果にプロンプトインジェクションが含まれ得るため、信頼できないデータとして扱う。</li>
+<li>ステップ上限、呼び出し予算、キャンセル、復旧も必要。</li>
+</ul>
+<h3 id="工程应用">エンジニアリングへの応用</h3>
+<p>静的に登録した業務ツール、厳格な引数Schema、範囲を限定したTool Context、人による承認を組み合わせられます。引用や業務カードは成功したツール結果から作り、実行を検証可能な出力へ結び付けます。</p>
+<h2 id="把权限放在确定性的执行边界">決定的な実行境界で権限を守る</h2>
+<p>基本は最小権限です。機微情報を公開学習データに入れず、推論時はユーザー、プロジェクト、情報源に基づいてサーバー側で絞り、必要最小限のコンテキストだけを渡します。RAGは入口にすぎず、ACL、ツール権限、インジェクション対策、出力検査、ログ管理が必要です。</p>
+<h3 id="分层措施">層ごとの対策</h3>
+<ol>
+<li><strong>学習・モデル層：</strong> 学習データの分類、秘密情報の除去、利用許可の確認を行い、canaryや記憶抽出を評価します。機密知識は汎用重みへ固定せず、管理された情報源に置きます。</li>
+<li><strong>検索層：</strong> 検索前にテナント・ユーザー・文書のACLを適用します。キャッシュキーには権限範囲とデータ版を含め、必要なチャンクだけを返し、認証情報や機微フィールドを除きます。</li>
+<li><strong>Agent・Tool層：</strong> サーバーでツールを静的登録し、ユーザーごとに絞ります。高リスクの読み取りや副作用には適切な承認を設け、任意URL、Shell、SQL、外向き通信を制限します。Webページ、添付、ツール結果は信頼できないデータとして扱い、間接的なインジェクションを防ぎます。</li>
+<li><strong>出力・運用層：</strong> DLP/PII検査とマスキングを行い、生の認証情報や機微なプロンプト全体をログに残しません。アクセス主体、情報源、ツール、判断を記録し、漏えいと越権のレッドチーム評価を定期的に実施します。</li>
+</ol>
+<h3 id="工程应用-1">エンジニアリングへの応用</h3>
+<p>プロジェクトの役割、ブランドの共有範囲、情報源のライセンス、ツール承認を層に分けて実装すれば、モデルの判断と業務上の権限を分離できます。</p>
+<h2 id="按任务证据安全与系统分层评估">タスク・根拠・安全性・システムを分けて評価する</h2>
+<p>モデルの点数だけでなく、タスクの結果、根拠、安全性、システムの振る舞いへ評価を広げます。オフラインの正解集は能力を、オンライン指標は利用者が実際に目的を達成したかを示します。両方を場面別に分け、回帰を追跡します。</p>
+<h3 id="评估矩阵">評価のマトリクス</h3>
+<table>
+<thead>
+<tr>
+<th>観点</th>
+<th>指標の例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>タスク品質</td>
+<td>Exact Match、F1、成功率、人の選好</td>
+</tr>
+<tr>
+<td>有用性</td>
+<td>網羅性、実行可能性、利用者の解決率</td>
+</tr>
+<tr>
+<td>事実性</td>
+<td>事実の正答率、主張の検証</td>
+</tr>
+<tr>
+<td>根拠との整合</td>
+<td>コンテキストの支持率、引用の適合率・再現率</td>
+</tr>
+<tr>
+<td>検索</td>
+<td>Recall@k、MRR、NDCG、ゼロ件率</td>
+</tr>
+<tr>
+<td>頑健性</td>
+<td>誤字、言い換え、長い文脈、分布外入力</td>
+</tr>
+<tr>
+<td>安全性</td>
+<td>有害性、越権、プライバシー、脱獄、誤拒否率</td>
+</tr>
+<tr>
+<td>Agent</td>
+<td>ツール選択、引数の正確さ、手順数、復旧率</td>
+</tr>
+<tr>
+<td>効率</td>
+<td>TTFT、TPOT、p95遅延、トークン、費用、スループット</td>
+</tr>
+<tr>
+<td>運用</td>
+<td>エラー、再試行、キャッシュ命中、ロールバック、ドリフト</td>
+</tr>
+</tbody>
+</table>
+<h3 id="llm-as-a-judge-的使用方式">LLM Judgeの使い方</h3>
+<p>自由記述の回答を大量に一次評価する際には便利ですが、次を確認します。</p>
+<ul>
+<li>評価基準を明確にし、観点ごとに採点する。</li>
+<li>候補の順をランダムに変え、位置バイアスを測る。</li>
+<li>モデル名を隠し、文体への好みを抑える。</li>
+<li>人のラベルを使って一致度を校正する。</li>
+<li>重要な安全性や事実性は、ルール、ツール、人で再確認する。</li>
+<li>Judgeのモデルとプロンプトの版を記録する。</li>
+</ul>
+<h3 id="评测流程">評価の流れ</h3>
+<pre><code class="language-text">定义真实任务和失败成本
+→ 建立黄金集与困难切片
+→ 对各模块分别测量
+→ 端到端回放
+→ 人工复核高风险样本
+→ 灰度/A-B 测试
+→ 监控漂移并把失败样本回流
+</code></pre>
+<h3 id="工程应用-2">エンジニアリングへの応用</h3>
+<p>画像レビューなら、キャラクター認識、ルールの計画、矩形、素材検索、幾何検証、最終指摘に分けて評価できます。Agentならツール選択、権限、根拠、成功率、トークン、遅延を測ります。</p>
+<h2 id="参考资料">参考資料</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2302.04761" target="_blank" rel="noopener noreferrer">Toolformer: Language Models Can Teach Themselves to Use Tools</a></li>
+<li><a href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noopener noreferrer">ReAct: Synergizing Reasoning and Acting in Language Models</a></li>
+<li><a href="https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf" target="_blank" rel="noopener noreferrer">NIST AI 600-1: Generative Artificial Intelligence Profile</a></li>
+</ul>
+<p><a href="https://zhuanlan.zhihu.com/p/2022080840163673941" target="_blank" rel="noopener noreferrer">Shard ZhangによるLLM関連質問の整理</a>も参考に、仕組み、適用条件、設計上の選択を詳しく説明しています。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#agent">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/agent/rag"><small>← 前の記事</small><span>RAG：検索結果を検証できる回答につなげる</span></a><a href="/ja/blog/agent/langchain"><small>次の記事 →</small><span>LangChain：コンポーネントの境界を明確にして LLM アプリを作る</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#从调用意图到真实执行">呼び出しの意図から実行へ</a></li><li><a href="#把权限放在确定性的执行边界">決定的な実行境界で権限を守る</a></li><li><a href="#按任务证据安全与系统分层评估">タスク・根拠・安全性・システムを分けて評価する</a></li><li><a href="#参考资料">参考資料</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

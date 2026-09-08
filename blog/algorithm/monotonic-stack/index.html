@@ -1,0 +1,112 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>单调栈：在弹出时确定答案 · 韦君豪</title><meta name="description" content="从每日温度、接雨水到矩阵最大矩形，追踪下标、单调方向和结算时机，解释当前元素怎样确定历史候选的边界。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/monotonic-stack/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/monotonic-stack/"><meta property="og:title" content="单调栈：在弹出时确定答案 · 韦君豪"><meta property="og:description" content="从每日温度、接雨水到矩阵最大矩形，追踪下标、单调方向和结算时机，解释当前元素怎样确定历史候选的边界。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/algorithm/monotonic-stack/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/monotonic-stack" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/algorithm/monotonic-stack" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/monotonic-stack" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#algorithm">算法</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学习笔记</p><h1>单调栈：在弹出时确定答案</h1><p class="article-description">从每日温度、接雨水到矩阵最大矩形，追踪下标、单调方向和结算时机，解释当前元素怎样确定历史候选的边界。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 4 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="当前元素让历史候选得到答案">当前元素让历史候选得到答案</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/e4b98dbe75083167fff8.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="单调栈：在弹出时确定答案: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/e4b98dbe75083167fff8.svg" alt="单调栈：在弹出时确定答案: 机制示意图" width="465" height="554" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart LR
+ A["新的温度 T[i]"] --> B{"比栈顶温度高？"}
+ B -->|是| C["弹出下标 j，答案为 i-j"]
+ C --> B
+ B -->|否或栈空| D["把 i 入栈"]
+ D --> E["等待下一个元素"]
+</code></pre></details></div>
+<p>每日温度的栈保留尚未找到更暖日子的下标。每个下标最多入栈、出栈各一次，因此总处理量为线性。</p>
+<h2 id="先识别问题的结构">先识别问题的结构</h2>
+<ul>
+<li>要找每个位置左/右侧第一个更大或更小元素，或要用两侧边界计算宽度、面积时，考虑单调栈。</li>
+<li>判断能否弹栈，要问：当前元素是否已经确定了栈顶的答案，或让栈顶不再需要保留？例如更高温度确定“右侧第一个更大”；更矮柱子确定矩形不能继续向右延伸。</li>
+<li>栈通常保存尚未结算的下标；下标有序，数值按所需方向单调。每个下标最多入栈、出栈一次，因此总时间为 <code>O(n)</code>。</li>
+<li>比较符号由“严格更大/更小”决定；相等元素是否弹出要与边界定义一致。本篇温度和接雨水保留相等高度，栈为非递增；矩形保留相等高度，栈为非递减。</li>
+</ul>
+<h2 id="核心思路">核心思路</h2>
+<p>单调栈维护一个单调递增或递减的序列。当新元素破坏单调性时，持续弹栈，并在弹栈时计算答案。</p>
+<p>以下为教学伪代码，中文条件和结算步骤是待按题意替换的占位。</p>
+<pre><code class="hljs language-python"><span class="hljs-string">"""
+单调栈通用模版：
+1. 栈中通常保存下标，方便同时获得元素值、距离和区间宽度
+2. 遍历每个元素
+3. 当前元素破坏单调性时，不断弹栈并结算答案
+4. 当前下标入栈
+5. 必要时用哨兵处理栈内剩余元素
+"""</span>
+
+stack = []
+<span class="hljs-keyword">for</span> i, value <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(nums):
+    <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> 当前元素破坏单调性:
+        j = stack.pop()
+        根据 i、j 和新的栈顶计算答案
+    stack.append(i)
+</code></pre>
+<h2 id="例题一每日温度下一个更高温度">例题一：每日温度（下一个更高温度）</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/daily-temperatures/" target="_blank" rel="noopener noreferrer">LeetCode 739. 每日温度</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">dailyTemperatures</span>(<span class="hljs-params">self, temperatures: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]:
+        ans = [<span class="hljs-number">0</span>] * <span class="hljs-built_in">len</span>(temperatures)
+        stack = []  <span class="hljs-comment"># 尚未找到更高温度的下标；对应温度单调递减</span>
+
+        <span class="hljs-keyword">for</span> i, temperature <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(temperatures):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> temperature > temperatures[stack[-<span class="hljs-number">1</span>]]:
+                j = stack.pop()
+                ans[j] = i - j
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>对应思路</strong>：栈中保存还没找到答案的日期。当前温度更高时，弹出的日期第一次遇到更高温度，距离就是 <code>i - j</code>。</p>
+<h2 id="例题二接雨水">例题二：接雨水</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/trapping-rain-water/" target="_blank" rel="noopener noreferrer">LeetCode 42. 接雨水</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">trap</span>(<span class="hljs-params">self, height: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        ans = <span class="hljs-number">0</span>
+        stack = []  <span class="hljs-comment"># 下标对应的高度单调递减</span>
+
+        <span class="hljs-keyword">for</span> i, current_height <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(height):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> current_height > height[stack[-<span class="hljs-number">1</span>]]:
+                bottom = stack.pop()
+                <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> stack:
+                    <span class="hljs-keyword">break</span>
+
+                left = stack[-<span class="hljs-number">1</span>]
+                width = i - left - <span class="hljs-number">1</span>
+                bounded_height = <span class="hljs-built_in">min</span>(height[left], current_height) - height[bottom]
+                ans += width * bounded_height
+
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>对应思路</strong>：弹栈元素是凹槽底部，新栈顶和当前柱子分别是左右边界。本层雨水为 <code>宽度 × 有效高度</code>。</p>
+<h2 id="例题三最大矩形矩阵版">例题三：最大矩形（矩阵版）</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/maximal-rectangle/" target="_blank" rel="noopener noreferrer">LeetCode 85. 最大矩形</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">maximalRectangle</span>(<span class="hljs-params">self, matrix: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> matrix:
+            <span class="hljs-keyword">return</span> <span class="hljs-number">0</span>
+
+        heights = [<span class="hljs-number">0</span>] * <span class="hljs-built_in">len</span>(matrix[<span class="hljs-number">0</span>])
+        ans = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">for</span> row <span class="hljs-keyword">in</span> matrix:
+            <span class="hljs-keyword">for</span> i, value <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(row):
+                heights[i] = heights[i] + <span class="hljs-number">1</span> <span class="hljs-keyword">if</span> value == <span class="hljs-string">'1'</span> <span class="hljs-keyword">else</span> <span class="hljs-number">0</span>
+            ans = <span class="hljs-built_in">max</span>(ans, <span class="hljs-variable language_">self</span>.largestRectangleArea(heights))
+
+        <span class="hljs-keyword">return</span> ans
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">largestRectangleArea</span>(<span class="hljs-params">self, heights: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-built_in">int</span>:
+        heights = [<span class="hljs-number">0</span>] + heights + [<span class="hljs-number">0</span>]  <span class="hljs-comment"># 两侧哨兵</span>
+        stack = []  <span class="hljs-comment"># 下标对应的高度单调递增</span>
+        ans = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">for</span> i, current_height <span class="hljs-keyword">in</span> <span class="hljs-built_in">enumerate</span>(heights):
+            <span class="hljs-keyword">while</span> stack <span class="hljs-keyword">and</span> current_height &#x3C; heights[stack[-<span class="hljs-number">1</span>]]:
+                height = heights[stack.pop()]
+                width = i - stack[-<span class="hljs-number">1</span>] - <span class="hljs-number">1</span>
+                ans = <span class="hljs-built_in">max</span>(ans, height * width)
+            stack.append(i)
+
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>对应思路</strong>：把每一行当作柱状图底边，<code>heights[i]</code> 记录该列连续出现 <code>1</code> 的高度。遇到更矮柱子时，弹出的高度不能再向右扩展；新栈顶和当前下标就是它的左右边界。</p>
+<h2 id="三题的共同点">三题的共同点</h2>
+<ul>
+<li><strong>每日温度</strong>：弹栈时确定“右侧第一个更大元素”。</li>
+<li><strong>接雨水</strong>：弹栈时用左右边界结算凹槽面积。</li>
+<li><strong>最大矩形</strong>：逐行转换为柱状图，弹栈时确定当前高度能够覆盖的最大宽度。</li>
+</ul></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#algorithm">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/algorithm/matrix-simulation"><small>← 上一篇</small><span>矩阵模拟：用四条边界走完螺旋</span></a><a href="/blog/algorithm/prefix-sum"><small>下一篇 →</small><span>前缀和：把区间问题转成历史状态</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#当前元素让历史候选得到答案">当前元素让历史候选得到答案</a></li><li><a href="#先识别问题的结构">先识别问题的结构</a></li><li><a href="#核心思路">核心思路</a></li><li><a href="#例题一每日温度下一个更高温度">例题一：每日温度（下一个更高温度）</a></li><li><a href="#例题二接雨水">例题二：接雨水</a></li><li><a href="#例题三最大矩形矩阵版">例题三：最大矩形（矩阵版）</a></li><li><a href="#三题的共同点">三题的共同点</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

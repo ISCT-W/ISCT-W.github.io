@@ -1,0 +1,250 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>連結リスト：つなぎ替える前に次のノードを保存する · 韋 君豪</title><meta name="description" content="## 反転前に未処理の部分を保存する"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/linked-list/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/linked-list/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/linked-list/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/linked-list/"><meta property="og:title" content="連結リスト：つなぎ替える前に次のノードを保存する · 韋 君豪"><meta property="og:description" content="## 反転前に未処理の部分を保存する"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/linked-list/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/linked-list" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/linked-list" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/linked-list" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>連結リスト：つなぎ替える前に次のノードを保存する</h1><p class="article-description">## 反転前に未処理の部分を保存する</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 8 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="反转链表时先保存还没有处理的部分">反転前に未処理の部分を保存する</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/b31b06bb03d4802c540b.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="連結リスト：つなぎ替える前に次のノードを保存する: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/b31b06bb03d4802c540b.svg" alt="連結リスト：つなぎ替える前に次のノードを保存する: 仕組みの図（原文のラベル）" width="642" height="683" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ A["prev = 空，curr = 原链表头"] --> B{"curr 非空？"}
+ B -->|否| Z["返回 prev：反转后的头"]
+ B -->|是| C["先保存 nxt = curr.next"]
+ C --> D["令 curr.next 指向 prev"]
+ D --> E["prev 移到 curr，curr 移到 nxt"]
+ E --> B
+</code></pre></details></div>
+<p>ポインタを変える前に元の後続ノードを保存することで、残りのリストを失わずに済みます。各反復の後、<code>prev</code> は処理済み部分、<code>curr</code> は未処理部分を指します。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<table>
+<thead>
+<tr>
+<th>目的</th>
+<th>手法と根拠</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ノードの反転・削除・並べ替え</td>
+<td>未処理の後続を保存してから、局所的に <code>next</code> を変更する</td>
+</tr>
+<tr>
+<td>閉路の判定・入口の探索</td>
+<td>速度差によって閉路内で出会う。閉路がなければ速いポインタが先にnullへ達する</td>
+</tr>
+<tr>
+<td>K個ずつの反転</td>
+<td>完全な一組と残りに分け、K個あることを確認して反転し、再帰の結果をつなぐ</td>
+</tr>
+<tr>
+<td>LRUのキー検索と順序変更を <code>O(1)</code> にする</td>
+<td>ハッシュ表でノードを見つけ、双方向リストで削除・挿入する。単方向では前のノードを直接特定できない</td>
+</tr>
+</tbody>
+</table>
+<h2 id="把状态和不变量想清楚">状態と不変条件を明確にする</h2>
+<ul>
+<li>ポインタの変化を図にし、切断前に後続を保存したか確認します。</li>
+<li>先頭を変える場合はダミーヘッド、閉路や中点には高速・低速ポインタを検討します。</li>
+<li>再帰では、受け取る範囲、返す端点、次の区間を接続する担当を明確にします。</li>
+</ul>
+<h2 id="教学骨架">学習用の骨格</h2>
+<p>以下は別々のパターンの疑似コードです。中国語の箇所は問題に応じて補い、すべてを同じポインタループにまとめないようにします。</p>
+<pre><code class="language-text">迭代反转：
+    pre = None，cur = head
+    while cur 非空：
+        next_node = cur.next       # 保存未处理部分
+        cur.next = pre             # 接入已反转部分
+        pre = cur，cur = next_node
+    return pre
+
+本篇递归反转 rev(cur, pre)：
+    if cur 为空：return pre
+    new_head = rev(cur.next, cur)
+    cur.next = pre                 # 回溯时连向原前驱
+    return new_head
+
+环入口：
+    slow = fast = head
+    while fast 和 fast.next 非空：
+        slow 前进一步，fast 前进两步
+        若相遇：一个指针回到 head，两者同步前进一步直到相遇，返回该节点
+    return None
+
+K 个一组翻转：
+    从 head 找满 K 个节点；不足则 return head
+    保存 next_group，翻转本组，得到 new_head 和 new_tail
+    new_tail.next = 递归处理(next_group, K)
+    return new_head
+
+LRU：
+    初始化 key→节点 的字典及双向链表头尾哨兵
+    get：未命中返回 -1；命中则移到最前并返回值
+    put：已有键更新并移到最前；新键加入字典和链表最前
+         若超容量，同时删除链表最后的实际节点及其字典条目
+</code></pre>
+<p>反転中の <code>pre</code> は処理済み部分、<code>cur</code> は未処理部分です。再帰版では戻りながら向きを変えます。LRUの不変条件は、辞書とリストが同じ実ノードを含み、先頭が最近使用、末尾が最も長く未使用であることです。</p>
+<h2 id="例题一反转链表">例1：連結リストの反転</h2>
+<p>問題：<a href="https://leetcode.cn/problems/reverse-linked-list/" target="_blank" rel="noopener noreferrer">LeetCode 206</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, next=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.next = next</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverseList</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode]</span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        <span class="hljs-comment"># pre = None</span>
+        <span class="hljs-comment"># cur = head</span>
+        <span class="hljs-comment"># while cur:</span>
+        <span class="hljs-comment">#     tmp = cur.next</span>
+        <span class="hljs-comment">#     cur.next = pre</span>
+        <span class="hljs-comment">#     pre = cur</span>
+        <span class="hljs-comment">#     cur = tmp</span>
+        <span class="hljs-comment"># return pre</span>
+        
+        pre = <span class="hljs-literal">None</span>
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">rev</span>(<span class="hljs-params">cur, pre</span>):
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> cur: <span class="hljs-keyword">return</span> pre
+            res = rev(cur.<span class="hljs-built_in">next</span>, cur)
+            cur.<span class="hljs-built_in">next</span> = pre
+            <span class="hljs-keyword">return</span> res
+        revd = rev(head, pre)
+        <span class="hljs-keyword">return</span> revd
+</code></pre>
+<p><strong>実装のポイント：</strong> コメント部分が反復版で、実行されるのは再帰版です。<code>rev(cur, pre)</code> は <code>cur</code> からのリストを反転し、最終的に <code>cur</code> を <code>pre</code> に向けます。次のノードへ新しい前駆を渡し、戻る際に <code>cur.next = pre</code> を実行します。</p>
+<p><strong>例：</strong> <code>1 -> 2 -> 3 -> None</code> に <code>rev(1, None)</code> を呼びます。</p>
+<pre><code class="language-text">rev(1, None)
+  -> rev(2, 1)
+       -> rev(3, 2)
+            -> rev(None, 3)，返回节点 3
+</code></pre>
+<p>戻る際に <code>3.next = 2</code>、<code>2.next = 1</code>、<code>1.next = None</code> と設定し、新しい先頭 <code>3</code> を返します。</p>
+<h2 id="例题二环形链表-ii">例2：Linked List Cycle II</h2>
+<p>問題：<a href="https://leetcode.cn/problems/linked-list-cycle-ii/" target="_blank" rel="noopener noreferrer">LeetCode 142</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, x):</span>
+<span class="hljs-comment">#         self.val = x</span>
+<span class="hljs-comment">#         self.next = None</span>
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">detectCycle</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode]</span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        s, l = head, head
+
+        <span class="hljs-keyword">while</span> <span class="hljs-literal">True</span>:
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> l <span class="hljs-keyword">or</span> <span class="hljs-keyword">not</span> l.<span class="hljs-built_in">next</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">None</span>
+            s = s.<span class="hljs-built_in">next</span>
+            l = l.<span class="hljs-built_in">next</span>.<span class="hljs-built_in">next</span>
+            <span class="hljs-keyword">if</span> s == l: <span class="hljs-keyword">break</span>
+        l = head
+        <span class="hljs-keyword">while</span> l != s:
+            l, s = l.<span class="hljs-built_in">next</span>, s.<span class="hljs-built_in">next</span>
+        <span class="hljs-keyword">return</span> l
+</code></pre>
+<p><strong>実装のポイント：</strong> 速いポインタは2歩、遅い方は1歩進みます。最初に出会ったら片方を先頭に戻し、両方を1歩ずつ進めます。次の合流点が閉路の入口です。</p>
+<p><strong>理由：</strong> 先頭から入口までを <code>a</code>、入口から最初の合流点までを <code>b</code>、閉路長を <code>c</code> とします。合流時に速い方は整数周だけ余分に進んでいます。ここから、<code>a</code> と合流点から入口への距離の差は閉路長の整数倍となり、同じ速度なら入口で出会うと分かります。</p>
+<h2 id="例题三k-个一组翻转链表困难">例3：K個ずつノードを反転する（Hard）</h2>
+<p>問題：<a href="https://leetcode.cn/problems/reverse-nodes-in-k-group/" target="_blank" rel="noopener noreferrer">LeetCode 25</a></p>
+<pre><code class="hljs language-python"><span class="hljs-comment"># Definition for singly-linked list.</span>
+<span class="hljs-comment"># class ListNode:</span>
+<span class="hljs-comment">#     def __init__(self, val=0, next=None):</span>
+<span class="hljs-comment">#         self.val = val</span>
+<span class="hljs-comment">#         self.next = next</span>
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverseKGroup</span>(<span class="hljs-params">self, head: <span class="hljs-type">Optional</span>[ListNode], k: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-type">Optional</span>[ListNode]:
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">reverse</span>(<span class="hljs-params">head, tail</span>):
+            pre = tail.<span class="hljs-built_in">next</span>
+            cur = head
+            <span class="hljs-keyword">while</span> pre != tail: <span class="hljs-comment"># 关键循环，建议自己画链子 - 先保存旧 next，然后pre接上新next，然后往后 - 其实是链表很通用的过程</span>
+                suc = cur.<span class="hljs-built_in">next</span>
+                cur.<span class="hljs-built_in">next</span> = pre
+                pre = cur
+                cur = suc
+            <span class="hljs-keyword">return</span> tail, head
+
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> head <span class="hljs-keyword">or</span> <span class="hljs-keyword">not</span> head.<span class="hljs-built_in">next</span>: <span class="hljs-keyword">return</span> head
+        tail = head
+        <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(k - <span class="hljs-number">1</span>): <span class="hljs-comment"># 找到当前的tail以进入当前修改</span>
+            tail = tail.<span class="hljs-built_in">next</span>
+            <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> tail: <span class="hljs-keyword">return</span> head
+        suc = tail.<span class="hljs-built_in">next</span> <span class="hljs-comment"># 记录下一组的开头</span>
+        new_head, _  = reverse(head, tail) <span class="hljs-comment"># 反转这一组</span>
+        head.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.reverseKGroup(suc, k) <span class="hljs-comment"># 递归处理剩余部分</span>
+        <span class="hljs-keyword">return</span> new_head
+</code></pre>
+<h3 id="分组与递归到底在做什么">グループ化と再帰の役割</h3>
+<p><code>reverseKGroup(head, k)</code> は、<code>head</code> から始まるリスト全体を処理し、新しい先頭を返します。</p>
+<ol>
+<li><code>k - 1</code> 歩進んで一組の <code>tail</code> を探します。K個なければそのまま返します。</li>
+<li><code>reverse(head, tail)</code> は閉区間 <code>[head, tail]</code> だけを反転し、元の <code>tail</code> を新しい先頭、元の <code>head</code> を新しい末尾として返します。</li>
+<li>元の境界を失う前に <code>suc = tail.next</code> で次の組の開始位置を保存します。</li>
+<li>残りを再帰処理し、実装の端点の扱いに従って <code>head.next = self.reverseKGroup(suc, k)</code> でつなぎます。</li>
+</ol>
+<p><strong>例：</strong> <code>1 -> 2 -> 3 -> 4 -> 5</code>、<code>k = 2</code> の場合です。</p>
+<ul>
+<li><code>[1, 2]</code> を <code>2 -> 1</code> に反転し、<code>1</code> が新しい末尾になります。</li>
+<li>残りの <code>3 -> 4 -> 5</code> を再帰で <code>4 -> 3 -> 5</code> にします。</li>
+<li><code>1.next</code> に接続し、<code>2 -> 1 -> 4 -> 3 -> 5</code> を得ます。</li>
+</ul>
+<p><code>reverse</code> で <code>pre = tail.next</code> とすると、元の先頭が一時的に次の区間へつながります。その後、再帰が返す新しい先頭で接続を置き換えます。</p>
+<h2 id="例题四lru-缓存">例4：LRUキャッシュ</h2>
+<p>問題：<a href="https://leetcode.cn/problems/lru-cache/" target="_blank" rel="noopener noreferrer">LeetCode 146</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Node</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, key=<span class="hljs-number">0</span>, value=<span class="hljs-number">0</span></span>): <span class="hljs-comment"># 按照使用顺序排序</span>
+        <span class="hljs-variable language_">self</span>.key = key
+        <span class="hljs-variable language_">self</span>.value = value
+        <span class="hljs-variable language_">self</span>.prev = <span class="hljs-literal">None</span>
+        <span class="hljs-variable language_">self</span>.<span class="hljs-built_in">next</span> = <span class="hljs-literal">None</span>
+
+
+<span class="hljs-keyword">class</span> <span class="hljs-title class_">LRUCache</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">__init__</span>(<span class="hljs-params">self, capacity: <span class="hljs-built_in">int</span></span>):
+        <span class="hljs-variable language_">self</span>.capacity = capacity
+        <span class="hljs-variable language_">self</span>.cache = {} <span class="hljs-comment"># O(1)查找</span>
+
+        <span class="hljs-variable language_">self</span>.head = Node()
+        <span class="hljs-variable language_">self</span>.tail = Node()
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.tail
+        <span class="hljs-variable language_">self</span>.tail.prev = <span class="hljs-variable language_">self</span>.head
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">_remove</span>(<span class="hljs-params">self, node</span>):
+        node.prev.<span class="hljs-built_in">next</span> = node.<span class="hljs-built_in">next</span>
+        node.<span class="hljs-built_in">next</span>.prev = node.prev
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">_add_front</span>(<span class="hljs-params">self, node</span>):
+        node.<span class="hljs-built_in">next</span> = <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span>
+        node.prev = <span class="hljs-variable language_">self</span>.head
+
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span>.prev = node
+        <span class="hljs-variable language_">self</span>.head.<span class="hljs-built_in">next</span> = node
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">get</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-keyword">if</span> key <span class="hljs-keyword">not</span> <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.cache: <span class="hljs-keyword">return</span> -<span class="hljs-number">1</span>
+        
+        node = <span class="hljs-variable language_">self</span>.cache.get(key)
+
+        <span class="hljs-comment"># 刚访问放在一开始</span>
+        <span class="hljs-variable language_">self</span>._remove(node)
+        <span class="hljs-variable language_">self</span>._add_front(node)
+        <span class="hljs-keyword">return</span> node.value
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">put</span>(<span class="hljs-params">self, key: <span class="hljs-built_in">int</span>, value: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-literal">None</span>:
+        <span class="hljs-comment"># 1. 已经有只需要更新；</span>
+        <span class="hljs-keyword">if</span> key <span class="hljs-keyword">in</span> <span class="hljs-variable language_">self</span>.cache:
+            node = <span class="hljs-variable language_">self</span>.cache.get(key)
+            node.value = value
+
+            <span class="hljs-comment"># 更新位置到一开始</span>
+            <span class="hljs-variable language_">self</span>._remove(node)
+            <span class="hljs-variable language_">self</span>._add_front(node)
+
+        <span class="hljs-comment"># 2.新加入则新建节点；期间如果超过长度则remove tail.prev</span>
+        <span class="hljs-keyword">else</span>:
+            node = Node(key, value)
+            <span class="hljs-variable language_">self</span>.cache[key] = node
+            <span class="hljs-variable language_">self</span>._add_front(node)
+
+            <span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(<span class="hljs-variable language_">self</span>.cache) > <span class="hljs-variable language_">self</span>.capacity:
+                old = <span class="hljs-variable language_">self</span>.tail.prev
+                <span class="hljs-variable language_">self</span>._remove(old)
+                <span class="hljs-keyword">del</span> <span class="hljs-variable language_">self</span>.cache[old.key]
+
+<span class="hljs-comment"># Your LRUCache object will be instantiated and called as such:</span>
+<span class="hljs-comment"># obj = LRUCache(capacity)</span>
+<span class="hljs-comment"># param_1 = obj.get(key)</span>
+<span class="hljs-comment"># obj.put(key,value)</span>
+</code></pre>
+<p><strong>実装のポイント：</strong> ハッシュ表でノードを <code>O(1)</code> で探し、双方向リストで <code>O(1)</code> の削除・移動を行います。<code>head</code> 側ほど最近使われ、<code>tail.prev</code> が最も長く使われていません。<code>get</code> と既存キーの更新は、どちらもノードを先頭に移します。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><a href="/ja/blog/algorithm/lexicographical-order"><small>← 前の記事</small><span>辞書順と次の順列</span></a><a href="/ja/blog/algorithm/matrix-simulation"><small>次の記事 →</small><span>行列のシミュレーション：未訪問の長方形を縮める</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#反转链表时先保存还没有处理的部分">反転前に未処理の部分を保存する</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#把状态和不变量想清楚">状態と不変条件を明確にする</a></li><li><a href="#教学骨架">学習用の骨格</a></li><li><a href="#例题一反转链表">例1：連結リストの反転</a></li><li><a href="#例题二环形链表-ii">例2：Linked List Cycle II</a></li><li><a href="#例题三k-个一组翻转链表困难">例3：K個ずつノードを反転する（Hard）</a></li><li><a href="#例题四lru-缓存">例4：LRUキャッシュ</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

@@ -1,0 +1,144 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Lexicographical order and the next permutation · Junhao Wei</title><meta name="description" content="## Change only the suffix that needs to change"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/en/blog/algorithm/lexicographical-order/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/lexicographical-order/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/lexicographical-order/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/lexicographical-order/"><meta property="og:title" content="Lexicographical order and the next permutation · Junhao Wei"><meta property="og:description" content="## Change only the suffix that needs to change"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/en/blog/algorithm/lexicographical-order/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">Skip to content</a><div id="top"></div><header class="site-header"><a class="brand" href="/en" aria-label="Junhao Wei — home"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="Main navigation"><a href="/en/#about">About</a><a href="/en/#publications">Publications</a><a href="/en/blog">Blog <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/lexicographical-order" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/lexicographical-order" lang="en" hrefLang="en" aria-current="true">EN</a><a href="/ja/blog/algorithm/lexicographical-order" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="Breadcrumbs"><a href="/en/blog">Blog</a><span>/</span><a href="/en/blog#algorithm">Algorithms</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / Study notes</p><h1>Lexicographical order and the next permutation</h1><p class="article-description">## Change only the suffix that needs to change</p><div class="article-byline"><span class="author-monogram">W</span><span>Junhao Wei</span><span class="byline-divider"></span><span>About 6 min read</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="下一个排列只改动必要的后缀">Change only the suffix that needs to change</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/30c3d239c80ce70a8789.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="View full-size image" aria-label="Lexicographical order and the next permutation: mechanism diagram (original labels): View full-size image"><img src="/figures/mechanisms/30c3d239c80ce70a8789.svg" alt="Lexicographical order and the next permutation: mechanism diagram (original labels)" width="597" height="520" loading="lazy" decoding="async"></a><figcaption class="figure-hint">View full-size image ↗</figcaption></figure><details class="diagram-source"><summary>View diagram structure (original)</summary><pre><code class="language-mermaid">flowchart LR
+ A["从右找到首个上升位置 i"] --> B{"存在 i？"}
+ B -->|是| C["从右找比 nums[i] 大的元素并交换"]
+ C --> D["反转 i 后面的降序后缀"]
+ B -->|否| E["整体反转，回到最小排列"]
+</code></pre></details></div>
+<p>Keeping as much of the left side unchanged as possible minimizes the increase. After the swap, put the right side in its smallest order to obtain the immediate successor.</p>
+<h2 id="复习入口判断依据思路与骨架">Review entry point: conditions, reasoning, and skeleton</h2>
+<p>A comparison is lexicographical if the first differing position from the left determines the order. The next-permutation problem additionally keeps all elements and their counts unchanged and asks for the smallest strictly larger permutation. Ordinary numerical comparisons, arbitrary sorting, or finding just any larger permutation are different objectives.</p>
+<p>Preserve the left side, make the smallest increase at the rightmost position that can still increase, then minimize the suffix. A nonincreasing suffix is already the largest arrangement of its own elements, so rearranging that suffix alone cannot increase the whole sequence.</p>
+<pre><code class="language-text"># 教学伪代码：下一个排列
+从右找第一个 nums[i] &#x3C; nums[i + 1] 的位置 i
+若找不到：整体反转为最小排列，结束
+从右找第一个 nums[j] > nums[i] 的位置 j
+交换 nums[i] 与 nums[j]
+反转 i 右边的后缀，使其升序
+</code></pre>
+<p>For a first reading, work through sections 1–6. For revision, start here and use the examples in section 9 to check that you can explain every step independently.</p>
+<h2 id="1-字典序到底是什么">1. What lexicographical order means</h2>
+<p>Compare two sequences from left to right, just as a dictionary orders words.</p>
+<ol>
+<li>Compare corresponding elements from the beginning.</li>
+<li>Find the first position at which they differ.</li>
+<li>The sequence with the smaller element there comes first.</li>
+<li>If one sequence is a complete prefix of the other, the shorter one comes first.</li>
+</ol>
+<p>For example:</p>
+<pre><code class="language-text">[1, 2, 9] &#x3C; [1, 3, 0]
+</code></pre>
+<p>The first difference is at the second position, where <code>2 &#x3C; 3</code>. The later <code>9</code> and <code>0</code> no longer matter, just as the first different letter puts <code>apple</code> before <code>banana</code>.</p>
+<p>Another example:</p>
+<pre><code class="language-text">[1, 2] &#x3C; [1, 2, 0]
+</code></pre>
+<p>All shared positions match, so the shorter sequence is smaller.</p>
+<h2 id="2-什么是一个排列的下一个排列">2. What “next permutation” asks for</h2>
+<p>Sort all permutations of <code>[1, 2, 3]</code> in increasing lexicographical order:</p>
+<pre><code class="language-text">[1, 2, 3]
+[1, 3, 2]
+[2, 1, 3]
+[2, 3, 1]
+[3, 1, 2]
+[3, 2, 1]
+</code></pre>
+<p>The successor to <code>[1, 2, 3]</code> is <code>[1, 3, 2]</code>. The goal is the smallest of all larger permutations, not an arbitrary larger one.</p>
+<p>If the current permutation is already the largest, such as <code>[3, 2, 1]</code>, the problem requires wrapping to the smallest, <code>[1, 2, 3]</code>.</p>
+<h2 id="3-为什么算法要从右向左找">3. Why search from right to left</h2>
+<p>Positions further right have less influence on lexicographical order. To increase the sequence as little as possible, preserve its left side and change the rightmost position that can still increase.</p>
+<p>Consider:</p>
+<pre><code class="language-text">[1, 5, 4, 3, 2]
+</code></pre>
+<p>The suffix <code>[5, 4, 3, 2]</code> is nonincreasing and already maximal. No rearrangement confined to it can increase the full sequence. Move one step further left to <code>1</code>, which must be replaced by a larger value.</p>
+<p>Its position is <code>i</code> in the code and satisfies:</p>
+<pre><code class="language-text">nums[i] &#x3C; nums[i + 1]
+</code></pre>
+<p>To its right lies the longest nonincreasing suffix.</p>
+<h2 id="4-为什么与右侧最靠右且大于它的数交换">4. Why swap with the rightmost larger element</h2>
+<p>Replace <code>nums[i]</code> with a larger suffix element to increase the permutation. To minimize the increase, choose the smallest such element.</p>
+<p>Because the suffix is nonincreasing, the first value greater than <code>nums[i]</code> encountered from the right is exactly that smallest candidate. Its index is <code>j</code>.</p>
+<p>Continuing the example:</p>
+<pre><code class="language-text">原数组：       [1, 5, 4, 3, 2]
+找到 i：        ^
+从右找 j：                  ^
+交换后：       [2, 5, 4, 3, 1]
+</code></pre>
+<p>The array is now larger, and its first changed value has increased only from <code>1</code> to <code>2</code>.</p>
+<h2 id="5-为什么最后要反转后缀">5. Why reverse the suffix</h2>
+<p>The left part is fixed after the swap. The remaining positions must be ascending to make the result as small as possible.</p>
+<p>The suffix remains nonincreasing after the chosen swap, so reversal puts it in ascending order:</p>
+<pre><code class="language-text">交换后：       [2, 5, 4, 3, 1]
+反转后缀：     [2, 1, 3, 4, 5]
+</code></pre>
+<p>Thus <code>[2, 1, 3, 4, 5]</code> immediately follows <code>[1, 5, 4, 3, 2]</code>.</p>
+<h2 id="6-完整做题步骤">6. Complete procedure</h2>
+<ol>
+<li>Scan from right to left for the first <code>i</code> satisfying <code>nums[i] &#x3C; nums[i + 1]</code>.</li>
+<li>If none exists, the whole array is nonincreasing and maximal; reverse it.</li>
+<li>Otherwise, scan from the right for the first <code>j</code> satisfying <code>nums[j] > nums[i]</code>.</li>
+<li>Swap <code>nums[i]</code> and <code>nums[j]</code>.</li>
+<li>Reverse the suffix starting at <code>i + 1</code> to make it minimally ascending.</li>
+</ol>
+<h2 id="7-例题下一个排列">7. Example: Next Permutation</h2>
+<p>Problem: <a href="https://leetcode.cn/problems/next-permutation/" target="_blank" rel="noopener noreferrer">LeetCode 31</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">nextPermutation</span>(<span class="hljs-params">self, nums: <span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]</span>) -> <span class="hljs-literal">None</span>:
+        <span class="hljs-string">"""
+        Do not return anything, modify nums in-place instead.
+
+            先找出最大的索引 k 满足 nums[k] &#x3C; nums[k+1]，如果不存在，就翻转整个数组；
+            再找出另一个最大索引 l 满足 nums[l] > nums[k]；
+            交换 nums[l] 和 nums[k]；
+            最后翻转 nums[k+1:]。
+        """</span>
+        i = <span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">2</span>
+        <span class="hljs-keyword">while</span> i >= <span class="hljs-number">0</span> <span class="hljs-keyword">and</span> nums[i] >= nums[i + <span class="hljs-number">1</span>]:
+            i -= <span class="hljs-number">1</span>
+        <span class="hljs-keyword">if</span> i >= <span class="hljs-number">0</span>:
+            j = <span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">1</span>
+            <span class="hljs-keyword">while</span> j >= <span class="hljs-number">0</span> <span class="hljs-keyword">and</span> nums[i] >= nums[j]:
+                j -= <span class="hljs-number">1</span>
+            nums[i], nums[j] = nums[j], nums[i]
+        
+        left, right = i + <span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">1</span>
+        <span class="hljs-keyword">while</span> left &#x3C; right:
+            nums[left], nums[right] = nums[right], nums[left]
+            left += <span class="hljs-number">1</span>
+            right -= <span class="hljs-number">1</span>
+</code></pre>
+<h2 id="8-代码逐段对应">8. Reading the code in stages</h2>
+<pre><code class="hljs language-python">i = <span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">2</span>
+<span class="hljs-keyword">while</span> i >= <span class="hljs-number">0</span> <span class="hljs-keyword">and</span> nums[i] >= nums[i + <span class="hljs-number">1</span>]:
+    i -= <span class="hljs-number">1</span>
+</code></pre>
+<p>Find the rightmost position <code>i</code> that can increase. The loop skips the longest nonincreasing suffix.</p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">if</span> i >= <span class="hljs-number">0</span>:
+    j = <span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">1</span>
+    <span class="hljs-keyword">while</span> j >= <span class="hljs-number">0</span> <span class="hljs-keyword">and</span> nums[i] >= nums[j]:
+        j -= <span class="hljs-number">1</span>
+    nums[i], nums[j] = nums[j], nums[i]
+</code></pre>
+<p>When <code>i >= 0</code>, find and swap with the smallest larger candidate on the right. If <code>i == -1</code>, the entire array is already nonincreasing and no swap is needed.</p>
+<pre><code class="hljs language-python">left, right = i + <span class="hljs-number">1</span>, <span class="hljs-built_in">len</span>(nums) - <span class="hljs-number">1</span>
+<span class="hljs-keyword">while</span> left &#x3C; right:
+    nums[left], nums[right] = nums[right], nums[left]
+    left += <span class="hljs-number">1</span>
+    right -= <span class="hljs-number">1</span>
+</code></pre>
+<p>Reverse the suffix into ascending order. For <code>i == -1</code>, <code>left = 0</code>, so the same code reverses the whole array and handles the maximal permutation.</p>
+<h2 id="9-再看三个例子">9. Three more examples</h2>
+<pre><code class="language-text">[1, 2, 3] -> [1, 3, 2]
+</code></pre>
+<p>Here <code>i = 1</code>: swap <code>2</code> and <code>3</code>; the suffix contains only one element.</p>
+<pre><code class="language-text">[1, 3, 3, 2] -> [2, 1, 3, 3]
+</code></pre>
+<p>The longest nonincreasing suffix is <code>[3, 3, 2]</code>, and <code>i</code> points to <code>1</code>. Swap with the rightmost value greater than <code>1</code>, namely <code>2</code>, then reverse the suffix.</p>
+<pre><code class="language-text">[3, 2, 1] -> [1, 2, 3]
+</code></pre>
+<p>There is no valid <code>i</code>. The current permutation is maximal, so reverse it to the minimum.</p>
+<h2 id="10-复杂度与记忆句">10. Complexity and a useful reminder</h2>
+<ul>
+<li>Time: <code>O(n)</code> for the scans and reversal.</li>
+<li>Extra space: <code>O(1)</code>; the change is in place.</li>
+</ul>
+<p><strong>Find the rightmost position that can increase, replace it with the smallest larger value on its right, then minimize the suffix.</strong></p></div><div class="article-end"><span>✧</span><p>Keep reading. Stay curious.</p><a href="/en/blog#algorithm">Back to this topic ↑</a></div><nav class="adjacent-posts" aria-label="Adjacent articles"><a href="/en/blog/algorithm/heap"><small>← Previous</small><span>Heaps: maintain the boundary between two halves</span></a><a href="/en/blog/algorithm/linked-list"><small>Next →</small><span>Linked lists: preserve the next node before rewiring</span></a></nav></article><aside class="article-toc" aria-label="Article contents"><details open=""><summary>On this page <span>↘</span></summary><ol><li><a href="#下一个排列只改动必要的后缀">Change only the suffix that needs to change</a></li><li><a href="#复习入口判断依据思路与骨架">Review entry point: conditions, reasoning, and skeleton</a></li><li><a href="#1-字典序到底是什么">1. What lexicographical order means</a></li><li><a href="#2-什么是一个排列的下一个排列">2. What “next permutation” asks for</a></li><li><a href="#3-为什么算法要从右向左找">3. Why search from right to left</a></li><li><a href="#4-为什么与右侧最靠右且大于它的数交换">4. Why swap with the rightmost larger element</a></li><li><a href="#5-为什么最后要反转后缀">5. Why reverse the suffix</a></li><li><a href="#6-完整做题步骤">6. Complete procedure</a></li><li><a href="#7-例题下一个排列">7. Example: Next Permutation</a></li><li><a href="#8-代码逐段对应">8. Reading the code in stages</a></li><li><a href="#9-再看三个例子">9. Three more examples</a></li><li><a href="#10-复杂度与记忆句">10. Complexity and a useful reminder</a></li></ol></details><a class="toc-back" href="/en/blog">← All articles</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/en">Junhao Wei</a><p>Notes on research and on turning ideas into working systems.</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">Back to top ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="Hide Phronono" title="Hide Phronono"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="Phronono: click to say hello, drag to move" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="Pale blue Phronono plush" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">Move with arrow keys; hold Shift to move faster. Home resets the position. Enter or Space says hello; Escape hides the pet.</span></div></div></body></html>

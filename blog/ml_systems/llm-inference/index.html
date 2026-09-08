@@ -1,0 +1,112 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LLM 推理：KV Cache、连续批处理与服务性能 · 韦君豪</title><meta name="description" content="拆解自回归缓存的计算与显存成本，区分首个输出、逐步生成和整体吞吐，再分析连续批处理的收益与调度约束。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/ml_systems/llm-inference/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/ml_systems/llm-inference/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/ml_systems/llm-inference/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/ml_systems/llm-inference/"><meta property="og:title" content="LLM 推理：KV Cache、连续批处理与服务性能 · 韦君豪"><meta property="og:description" content="拆解自回归缓存的计算与显存成本，区分首个输出、逐步生成和整体吞吐，再分析连续批处理的收益与调度约束。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/ml_systems/llm-inference/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/ml_systems/llm-inference" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/ml_systems/llm-inference" lang="en" hrefLang="en">EN</a><a href="/ja/blog/ml_systems/llm-inference" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#ml_systems">机器学习系统</a></nav><header class="article-header"><p class="eyebrow ">ML SYSTEMS / 学习笔记</p><h1>LLM 推理：KV Cache、连续批处理与服务性能</h1><p class="article-description">拆解自回归缓存的计算与显存成本，区分首个输出、逐步生成和整体吞吐，再分析连续批处理的收益与调度约束。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 5 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>推理优化不只有生成速度一个数字。长输入带来的预填充计算、逐步生成的缓存访问，以及多个请求共享设备的调度方式，会同时影响响应延迟、吞吐和显存。需要先区分这些成本的来源，再判断缓存、量化、批处理或并行优化解决的是哪一段瓶颈。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/69c6c0a5a59f789c06b7.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="LLM 推理：KV Cache、连续批处理与服务性能: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/69c6c0a5a59f789c06b7.svg" alt="LLM 推理：KV Cache、连续批处理与服务性能: 机制示意图" width="488" height="897" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart LR
+    Q["等待队列"] --> S["调度器"]
+    S --> P["Prefill：处理输入并建立 KV"]
+    P --> K["活动请求的 KV 缓存"]
+    S --> D["Decode：计算新 token"]
+    K --> D
+    D --> K
+    D --> C{"请求是否结束"}
+    C -->|"否"| S
+    C -->|"是"| R["回收 KV 块与调度槽位"]
+    R --> S
+</code></pre></details></div>
+<p>连续批处理在生成迭代之间调整活动请求，而不是一直等待固定的一批全部完成。预填充与逐步生成仍会争用资源，吞吐增加并不自动意味着首个输出或尾延迟更低。</p>
+<h2 id="kv-cache-消除的是历史前向的重复计算">KV Cache 消除的是历史前向的重复计算</h2>
+<p>生成第 (t) 个 token 时，前 (t-1) 个 token 在各层的 Key 和 Value 不会改变。KV Cache 保存这些张量，新一步只计算新 token 的 Q/K/V，并让新 Query 关注缓存中的全部 Key/Value，从而避免每一步重新运行整个前缀。</p>
+<h3 id="计算与显存">计算与显存</h3>
+<p>若不缓存，每一步都重新计算长度不断增长的完整序列；缓存后，历史 token 的线性投影和前层计算不再重复。第 (t) 步的 Attention 仍需让新 Query 与 (t) 个 Key 做计算，所以单步 Attention 随上下文长度近似 (O(t))，完整生成阶段的 Attention 总量仍近似 (O(T^2))。KV Cache 主要消除的是历史 token 的重复前向计算，而不是把整个长序列 Attention 变成严格 (O(T))。</p>
+<p>KV Cache 显存可粗略估算为：</p>
+<span class="katex-display"><span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><msub><mi>M</mi><mrow><mi>K</mi><mi>V</mi></mrow></msub><mo>=</mo><mn>2</mn><mo>×</mo><mi>L</mi><mo>×</mo><mi>T</mi><mo>×</mo><msub><mi>H</mi><mrow><mi>k</mi><mi>v</mi></mrow></msub><mo>×</mo><msub><mi>d</mi><mrow><mi>h</mi><mi>e</mi><mi>a</mi><mi>d</mi></mrow></msub><mo>×</mo><mi>b</mi><mo>×</mo><mi>B</mi></mrow><annotation encoding="application/x-tex">M_{KV}=2\times L\times T\times H_{kv}\times d_{head}\times b\times B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.109em;">M</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3283em;"><span style="top:-2.55em;margin-left:-0.109em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0715em;">K</span><span class="mord mathnormal mtight" style="margin-right:0.2222em;">V</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.7278em;vertical-align:-0.0833em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em;"></span><span class="mord mathnormal">L</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.7667em;vertical-align:-0.0833em;"></span><span class="mord mathnormal" style="margin-right:0.1389em;">T</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.8333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal" style="margin-right:0.0813em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:-0.0813em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight" style="margin-right:0.0315em;">k</span><span class="mord mathnormal mtight" style="margin-right:0.0359em;">v</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.8444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathnormal">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361em;"><span style="top:-2.55em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathnormal mtight">h</span><span class="mord mathnormal mtight">e</span><span class="mord mathnormal mtight">a</span><span class="mord mathnormal mtight">d</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.7778em;vertical-align:-0.0833em;"></span><span class="mord mathnormal">b</span><span class="mspace" style="margin-right:0.2222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222em;"></span></span><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.0502em;">B</span></span></span></span></span>
+<p>其中 2 表示 K/V，(L) 为层数，(T) 为缓存长度，(H_{kv}) 为 KV Head 数，(b) 为每元素字节，(B) 为 Batch/并发序列数。</p>
+<h3 id="优化方式">优化方式</h3>
+<ul>
+<li><strong>MQA/GQA</strong>：多个 Query Head 共享较少的 KV Head；</li>
+<li><strong>KV Quantization</strong>：用 FP8/INT8 等降低缓存精度；</li>
+<li><strong>Paged KV Cache</strong>：按页管理，减少预留和碎片；</li>
+<li><strong>Sliding Window/Chunked Attention</strong>：限制有效历史范围；</li>
+<li><strong>Prefix Cache</strong>：相同 Prompt 前缀跨请求复用；</li>
+<li><strong>KV Offload</strong>：将部分缓存移到 CPU/其他层级，换取带宽开销。</li>
+</ul>
+<h2 id="性能必须同时看延迟吞吐与成本">性能必须同时看延迟、吞吐与成本</h2>
+<p>至少要同时看延迟、吞吐、并发、显存和单位成本，而且区分 Prefill 与 Decode。单报“tokens/s”没有意义，必须说明是单请求还是整卡、输入/输出长度、Batch 和分位数。</p>
+<h3 id="核心指标">核心指标</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>含义</th>
+<th>主要影响因素</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TTFT</td>
+<td>从请求到第一个输出 token</td>
+<td>Queue、Prompt 长度、Prefill、调度</td>
+</tr>
+<tr>
+<td>TPOT / ITL</td>
+<td>相邻输出 token 的平均时间</td>
+<td>Decode、KV 带宽、Batch、通信</td>
+</tr>
+<tr>
+<td>E2E Latency</td>
+<td>完整回答耗时</td>
+<td>TTFT + 输出长度 × TPOT</td>
+</tr>
+<tr>
+<td>Request Throughput</td>
+<td>每秒完成请求数</td>
+<td>长度分布、Batch、调度</td>
+</tr>
+<tr>
+<td>Token Throughput</td>
+<td>每秒生成总 token 数</td>
+<td>GPU 利用率、并行、Kernel</td>
+</tr>
+<tr>
+<td>Concurrency</td>
+<td>同时服务的活动序列数</td>
+<td>KV Cache、显存和调度</td>
+</tr>
+<tr>
+<td>Cost/Request</td>
+<td>单请求 GPU 时间或货币成本</td>
+<td>模型、长度、缓存、利用率</td>
+</tr>
+</tbody>
+</table>
+<p>“Token Efficiency” 可以进一步拆为：完成一个合格任务所需的输入/输出 token、缓存命中、重试次数以及单位成功任务成本。</p>
+<h3 id="典型权衡">典型权衡</h3>
+<ul>
+<li>增大 Batch 往往提高总吞吐，但可能增加 Queue 和单请求延迟；</li>
+<li>Tensor Parallel 可以容纳大模型，但带来跨卡通信；</li>
+<li>更长上下文增加 Prefill 计算与 KV Cache；</li>
+<li>量化降低显存和带宽，但要验证精度与 Kernel 支持；</li>
+<li>Speculative Decoding 用额外 Draft 计算换取更少 Target Model Decode 步骤。</li>
+</ul>
+<h2 id="连续批处理与请求调度">连续批处理与请求调度</h2>
+<p>Static Batching 把一组请求固定在一起，通常要等整组完成才能释放资源；不同输出长度导致短请求被长请求拖住。Continuous Batching 在每个 Decode iteration 后移除已完成序列，并立即把新请求加入可用槽位，提高 GPU 和 KV Cache 利用率。</p>
+<h3 id="执行方式">执行方式</h3>
+<pre><code class="language-text">等待队列
+  → Scheduler 选择可进入的 Prefill/Decode 请求
+  → 执行一个或若干 iteration
+  → 回收已结束请求的 KV block
+  → 加入新请求
+  → 下一 iteration
+</code></pre>
+<p>Continuous Batching 常与 PagedAttention/Paged KV Cache 配合：不为每个序列预留最大连续显存，而是按 block 动态分配，减少内部碎片，并允许更灵活地换入换出。</p>
+<h3 id="调度难点">调度难点</h3>
+<ul>
+<li>长 Prompt Prefill 可能阻塞 Decode，引起 TPOT 抖动；</li>
+<li>需要在 TTFT 与 Decode 流畅度之间选择优先级；</li>
+<li>不同长度和采样参数会造成 Batch 形状变化；</li>
+<li>Prefix Cache、LoRA Adapter 和多租户优先级会增加调度约束；</li>
+<li>高吞吐并不自动等于低尾延迟，需要观察 p95/p99。</li>
+</ul>
+<h2 id="参考资料">参考资料</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2309.06180" target="_blank" rel="noopener noreferrer">Efficient Memory Management for Large Language Model Serving with PagedAttention</a></li>
+</ul>
+<p>参考了 <a href="https://zhuanlan.zhihu.com/p/2022080840163673941" target="_blank" rel="noopener noreferrer">Shard Zhang 对 LLM 相关问题的整理</a>，并围绕机制、适用条件与工程取舍展开。</p></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#ml_systems">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><span></span><a href="/blog/ml_systems/lora"><small>下一篇 →</small><span>LoRA：低秩更新、量化底座与自适应预算</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#kv-cache-消除的是历史前向的重复计算">KV Cache 消除的是历史前向的重复计算</a></li><li><a href="#性能必须同时看延迟吞吐与成本">性能必须同时看延迟、吞吐与成本</a></li><li><a href="#连续批处理与请求调度">连续批处理与请求调度</a></li><li><a href="#参考资料">参考资料</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

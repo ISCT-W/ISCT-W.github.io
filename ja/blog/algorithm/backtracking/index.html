@@ -1,0 +1,96 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>バックトラッキング：選択・探索・取り消し · 韋 君豪</title><meta name="description" content="## 選択して再帰し、元に戻す"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/algorithm/backtracking/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/backtracking/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/backtracking/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/backtracking/"><meta property="og:title" content="バックトラッキング：選択・探索・取り消し · 韋 君豪"><meta property="og:description" content="## 選択して再帰し、元に戻す"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/algorithm/backtracking/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/backtracking" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/algorithm/backtracking" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/backtracking" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#algorithm">アルゴリズム</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学習ノート</p><h1>バックトラッキング：選択・探索・取り消し</h1><p class="article-description">## 選択して再帰し、元に戻す</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 4 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="选择递归与撤销">選択して再帰し、元に戻す</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/3a89569ec5b102f345dc.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="バックトラッキング：選択・探索・取り消し: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/3a89569ec5b102f345dc.svg" alt="バックトラッキング：選択・探索・取り消し: 仕組みの図（原文のラベル）" width="712" height="1267" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+ A["进入当前递归层"] --> B{"已构成完整答案？"}
+ B -->|是| C["保存路径副本并返回"]
+ B -->|否| H{"还有未尝试的候选？"}
+ H -->|否| R["返回上一层"]
+ H -->|是| D["取一个候选并检查合法性"]
+ D --> V{"合法？"}
+ V -->|否| H
+ V -->|是| E["修改共享路径 / 棋盘状态"]
+ E --> F["递归探索下一层"]
+ F --> G["撤销本层修改"]
+ G --> H
+</code></pre></details></div>
+<p>共有状態をその場で変更する場合は、再帰から戻ったときに、その階層で加えた変更を取り消します。毎回新しい経路のコピーを渡す場合は、オブジェクトの分離が取り消しの役割を担います。</p>
+<h2 id="先识别问题的结构">まず問題の構造を見極める</h2>
+<p>すべての有効な解を列挙し、各解を複数の候補から段階的に選んで構築できるなら、選択の過程を決定木として考えられます。回文分割では「次の区間をどこで切るか」、Nクイーンでは「この行のどの列に置くか」が一つの階層です。途中の状態を後の選択で修正できないと分かったら、その場で枝刈りします。</p>
+<h2 id="做题顺序">実装を考える順番</h2>
+<ol>
+<li>一つの階層の役割と、次の候補を決めるために必要な状態を定義します。</li>
+<li>解が完成する条件を決め、候補の列挙、妥当性の確認、再帰へと進みます。</li>
+<li>共有する経路や盤面を変更した場合は、戻る際に取り消します。毎回コピーを渡すなら不要です。ただし、共有経路を解として保存するときもコピーが必要です。</li>
+</ol>
+<h2 id="通用模板">基本テンプレート</h2>
+<p>バックトラッキングは、決定木上の深さ優先探索です。候補を一つ選び、次の階層を探索し、選択を取り消します。まず経路 <code>path</code>、次の開始位置、有効な候補、終了条件を明確にします。</p>
+<p>以下は学習用の疑似コードです。問題ごとに補う箇所を示す中国語のプレースホルダーは原文のまま残しています。無効な候補は再帰の前に除外します。</p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">def</span> <span class="hljs-title function_">backtrack</span>(<span class="hljs-params">state</span>):
+    <span class="hljs-keyword">if</span> 满足结束条件:
+        保存答案
+        <span class="hljs-keyword">return</span>
+
+    <span class="hljs-keyword">for</span> choice <span class="hljs-keyword">in</span> 当前可选项:
+        做选择
+        backtrack(下一状态)
+        撤销选择
+</code></pre>
+<h2 id="例题一分割回文串">例1：回文分割</h2>
+<p>問題：<a href="https://leetcode.cn/problems/palindrome-partitioning/" target="_blank" rel="noopener noreferrer">LeetCode 131. Palindrome Partitioning</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">partition</span>(<span class="hljs-params">self, s: <span class="hljs-built_in">str</span></span>) -> <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]:
+        ans = []
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">backtracing</span>(<span class="hljs-params">idx, cur</span>):
+            <span class="hljs-keyword">if</span> idx >= <span class="hljs-built_in">len</span>(s): 
+                ans.append(cur)
+                <span class="hljs-keyword">return</span>
+            
+            <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(idx, <span class="hljs-built_in">len</span>(s)):
+                candidate = s[idx: i+<span class="hljs-number">1</span>]
+                <span class="hljs-keyword">if</span> candidate == candidate[::-<span class="hljs-number">1</span>]:
+                    backtracing(i+<span class="hljs-number">1</span>, cur + [candidate])
+        
+        backtracing(<span class="hljs-number">0</span>, [])
+        <span class="hljs-keyword">return</span> ans
+</code></pre>
+<p><strong>実装のポイント：</strong> <code>idx</code> は次の区間の開始位置で、ループで終端 <code>i</code> を列挙します。切り出した文字列が回文の場合だけ再帰します。<code>cur + [candidate]</code> は新しい経路を作るため、明示的な取り消しは不要です。</p>
+<h2 id="例题二n-皇后困难">例2：Nクイーン（Hard）</h2>
+<p>問題：<a href="https://leetcode.cn/problems/n-queens/" target="_blank" rel="noopener noreferrer">LeetCode 51. N-Queens</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">solveNQueens</span>(<span class="hljs-params">self, n: <span class="hljs-built_in">int</span></span>) -> <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">str</span>]]:
+        <span class="hljs-comment"># 还是经典回溯，每次放一行直到放到最后一行；放的时候检查同列，左上与右上即可</span>
+        board = [[<span class="hljs-string">'.'</span>] * n <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n)]
+        res = []
+
+        <span class="hljs-keyword">def</span> <span class="hljs-title function_">backtracing</span>(<span class="hljs-params">row</span>):
+            <span class="hljs-keyword">if</span> row == n: <span class="hljs-comment"># 走完就是一种成功情况</span>
+                tmp = [<span class="hljs-string">''</span>.join(i) <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> board]
+                res.append(tmp)
+                <span class="hljs-keyword">return</span>
+            <span class="hljs-keyword">for</span> col <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(n): <span class="hljs-comment"># 验证是否在这个位置可以放，可以就放并且回溯</span>
+                <span class="hljs-keyword">if</span> <span class="hljs-keyword">not</span> <span class="hljs-variable language_">self</span>.isValid(board, row, col): <span class="hljs-keyword">continue</span>
+                board[row][col] = <span class="hljs-string">'Q'</span>
+                backtracing(row + <span class="hljs-number">1</span>)
+                board[row][col] = <span class="hljs-string">'.'</span>
+
+        backtracing(<span class="hljs-number">0</span>)
+        <span class="hljs-keyword">return</span> res
+
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">isValid</span>(<span class="hljs-params">self, board, row, col</span>):
+        n = <span class="hljs-built_in">len</span>(board)
+        
+        <span class="hljs-comment"># 检查同col上方是否有</span>
+        <span class="hljs-keyword">for</span> i <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(row):
+            <span class="hljs-keyword">if</span> board[i][col] == <span class="hljs-string">'Q'</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+
+        <span class="hljs-comment"># 检查右上对角线</span>
+        <span class="hljs-keyword">for</span> i, j <span class="hljs-keyword">in</span> <span class="hljs-built_in">zip</span>(<span class="hljs-built_in">range</span>(row - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>, -<span class="hljs-number">1</span>), <span class="hljs-built_in">range</span>(col + <span class="hljs-number">1</span>, n, <span class="hljs-number">1</span>)):
+            <span class="hljs-keyword">if</span> board[i][j] == <span class="hljs-string">'Q'</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+        
+        <span class="hljs-comment"># 检查左上对角线</span>
+        <span class="hljs-keyword">for</span> i, j <span class="hljs-keyword">in</span> <span class="hljs-built_in">zip</span>(<span class="hljs-built_in">range</span>(row - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>, -<span class="hljs-number">1</span>), <span class="hljs-built_in">range</span>(col - <span class="hljs-number">1</span>, -<span class="hljs-number">1</span>, -<span class="hljs-number">1</span>)):
+            <span class="hljs-keyword">if</span> board[i][j] == <span class="hljs-string">'Q'</span>: <span class="hljs-keyword">return</span> <span class="hljs-literal">False</span>
+    
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">True</span>
+</code></pre>
+<p><strong>考え方：</strong> 各行にクイーンを一つ置くため、再帰の深さが行番号になります。列を順に試し、既に置いたクイーンがある上方向の同じ列、左上と右上の対角線だけを確認します。置けるなら次の行へ進み、戻ったら <code>'.'</code> に戻します。<code>row == n</code> で全行への配置が完了するため、盤面のコピーを記録します。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#algorithm">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><span></span><a href="/ja/blog/algorithm/binary-search"><small>次の記事 →</small><span>二分探索：答えが存在し得る区間を残す</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#选择递归与撤销">選択して再帰し、元に戻す</a></li><li><a href="#先识别问题的结构">まず問題の構造を見極める</a></li><li><a href="#做题顺序">実装を考える順番</a></li><li><a href="#通用模板">基本テンプレート</a></li><li><a href="#例题一分割回文串">例1：回文分割</a></li><li><a href="#例题二n-皇后困难">例2：Nクイーン（Hard）</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

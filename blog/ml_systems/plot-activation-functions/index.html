@@ -1,0 +1,86 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>用 Python 绘制激活函数与导数 · 韦君豪</title><meta name="description" content="保留完整 NumPy 与 Matplotlib 脚本，并用机制图说明采样、计算导数、并排绘图和 SVG 输出的复现过程。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/ml_systems/plot-activation-functions/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/ml_systems/plot-activation-functions/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/ml_systems/plot-activation-functions/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/ml_systems/plot-activation-functions/"><meta property="og:title" content="用 Python 绘制激活函数与导数 · 韦君豪"><meta property="og:description" content="保留完整 NumPy 与 Matplotlib 脚本，并用机制图说明采样、计算导数、并排绘图和 SVG 输出的复现过程。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/ml_systems/plot-activation-functions/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/ml_systems/plot-activation-functions" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/ml_systems/plot-activation-functions" lang="en" hrefLang="en">EN</a><a href="/ja/blog/ml_systems/plot-activation-functions" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#ml_systems">机器学习系统</a></nav><header class="article-header"><p class="eyebrow ">ML SYSTEMS / 可复现代码</p><h1>用 Python 绘制激活函数与导数</h1><p class="article-description">保留完整 NumPy 与 Matplotlib 脚本，并用机制图说明采样、计算导数、并排绘图和 SVG 输出的复现过程。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 3 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>同一张图同时放置函数值和导数，可以把前向表示与反向梯度联系起来。下面的脚本在固定区间采样五种激活函数，使用一致颜色绘制两组曲线，并保存可缩放的矢量图。代码中的函数表达式、导数和坐标范围都直接保留，便于复现与核对。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/c7ca9e6e99a2e2319bb9.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="用 Python 绘制激活函数与导数: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/c7ca9e6e99a2e2319bb9.svg" alt="用 Python 绘制激活函数与导数: 机制示意图" width="448" height="549" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart LR
+    X["在区间内均匀采样 x"] --> F["计算五种激活函数"]
+    X --> D["计算对应导数"]
+    F --> P["左图绘制函数值"]
+    D --> Q["右图绘制导数"]
+    P --> S["统一配色、坐标与网格"]
+    Q --> S
+    S --> O["保存 activation_functions.svg"]
+</code></pre></details></div>
+<p>两侧为同一函数使用相同颜色。保存的是 SVG，因此插图可以随页面缩放；脚本在零点对 ReLU 导数采用明确的绘图约定，这不改变该点数学上不可导的事实。</p>
+<h2 id="函数值与导数">函数值与导数</h2>
+<figure class="article-figure"><a href="/figures/activation_functions.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="常见激活函数及其导数对比: 点击查看大图"><img src="/figures/activation_functions.svg" alt="常见激活函数及其导数对比" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure>
+<h2 id="复现方法">复现方法</h2>
+<p>在安装了 NumPy 和 Matplotlib 的 Python 环境中运行以下脚本，输出文件为同目录下的 <code>activation_functions.svg</code>。ReLU 在零点不可导；本图用零值作为该处的绘图约定。</p>
+<h2 id="完整代码">完整代码</h2>
+<pre><code class="hljs language-python"><span class="hljs-keyword">from</span> pathlib <span class="hljs-keyword">import</span> Path
+
+<span class="hljs-keyword">import</span> matplotlib.pyplot <span class="hljs-keyword">as</span> plt
+<span class="hljs-keyword">import</span> numpy <span class="hljs-keyword">as</span> np
+<span class="hljs-keyword">from</span> math <span class="hljs-keyword">import</span> erf
+
+
+<span class="hljs-keyword">def</span> <span class="hljs-title function_">normal_cdf</span>(<span class="hljs-params">x: np.ndarray</span>) -> np.ndarray:
+    <span class="hljs-keyword">return</span> <span class="hljs-number">0.5</span> * (<span class="hljs-number">1.0</span> + np.vectorize(erf)(x / np.sqrt(<span class="hljs-number">2.0</span>)))
+
+
+x = np.linspace(-<span class="hljs-number">6.0</span>, <span class="hljs-number">6.0</span>, <span class="hljs-number">1201</span>)
+sigmoid = <span class="hljs-number">1.0</span> / (<span class="hljs-number">1.0</span> + np.exp(-x))
+tanh = np.tanh(x)
+relu = np.maximum(x, <span class="hljs-number">0.0</span>)
+phi = np.exp(-<span class="hljs-number">0.5</span> * x**<span class="hljs-number">2</span>) / np.sqrt(<span class="hljs-number">2.0</span> * np.pi)
+gelu = x * normal_cdf(x)
+silu = x * sigmoid
+
+curves = {
+    <span class="hljs-string">"Sigmoid"</span>: (sigmoid, sigmoid * (<span class="hljs-number">1.0</span> - sigmoid)),
+    <span class="hljs-string">"Tanh"</span>: (tanh, <span class="hljs-number">1.0</span> - tanh**<span class="hljs-number">2</span>),
+    <span class="hljs-string">"ReLU"</span>: (relu, (x > <span class="hljs-number">0.0</span>).astype(<span class="hljs-built_in">float</span>)),
+    <span class="hljs-string">"GELU"</span>: (gelu, normal_cdf(x) + x * phi),
+    <span class="hljs-string">"SiLU"</span>: (silu, sigmoid + x * sigmoid * (<span class="hljs-number">1.0</span> - sigmoid)),
+}
+
+colors = {
+    <span class="hljs-string">"Sigmoid"</span>: <span class="hljs-string">"#3366CC"</span>,
+    <span class="hljs-string">"Tanh"</span>: <span class="hljs-string">"#109618"</span>,
+    <span class="hljs-string">"ReLU"</span>: <span class="hljs-string">"#DC3912"</span>,
+    <span class="hljs-string">"GELU"</span>: <span class="hljs-string">"#990099"</span>,
+    <span class="hljs-string">"SiLU"</span>: <span class="hljs-string">"#FF9900"</span>,
+}
+
+plt.rcParams.update(
+    {
+        <span class="hljs-string">"font.size"</span>: <span class="hljs-number">10</span>,
+        <span class="hljs-string">"axes.titlesize"</span>: <span class="hljs-number">12</span>,
+        <span class="hljs-string">"axes.labelsize"</span>: <span class="hljs-number">10</span>,
+        <span class="hljs-string">"legend.fontsize"</span>: <span class="hljs-number">9</span>,
+        <span class="hljs-string">"svg.fonttype"</span>: <span class="hljs-string">"none"</span>,
+    }
+)
+
+fig, axes = plt.subplots(<span class="hljs-number">1</span>, <span class="hljs-number">2</span>, figsize=(<span class="hljs-number">11.2</span>, <span class="hljs-number">4.2</span>), constrained_layout=<span class="hljs-literal">True</span>)
+
+<span class="hljs-keyword">for</span> name, (value, derivative) <span class="hljs-keyword">in</span> curves.items():
+    axes[<span class="hljs-number">0</span>].plot(x, value, label=name, color=colors[name], linewidth=<span class="hljs-number">2.0</span>)
+    axes[<span class="hljs-number">1</span>].plot(x, derivative, label=name, color=colors[name], linewidth=<span class="hljs-number">2.0</span>)
+
+<span class="hljs-keyword">for</span> axis <span class="hljs-keyword">in</span> axes:
+    axis.axhline(<span class="hljs-number">0.0</span>, color=<span class="hljs-string">"#666666"</span>, linewidth=<span class="hljs-number">0.8</span>)
+    axis.axvline(<span class="hljs-number">0.0</span>, color=<span class="hljs-string">"#666666"</span>, linewidth=<span class="hljs-number">0.8</span>)
+    axis.grid(<span class="hljs-literal">True</span>, color=<span class="hljs-string">"#D9D9D9"</span>, linewidth=<span class="hljs-number">0.7</span>, alpha=<span class="hljs-number">0.8</span>)
+    axis.set_xlim(-<span class="hljs-number">6.0</span>, <span class="hljs-number">6.0</span>)
+    axis.set_xlabel(<span class="hljs-string">"Input x"</span>)
+
+axes[<span class="hljs-number">0</span>].set_title(<span class="hljs-string">"Activation values"</span>)
+axes[<span class="hljs-number">0</span>].set_ylabel(<span class="hljs-string">"f(x)"</span>)
+axes[<span class="hljs-number">0</span>].set_ylim(-<span class="hljs-number">2.0</span>, <span class="hljs-number">6.0</span>)
+axes[<span class="hljs-number">1</span>].set_title(<span class="hljs-string">"Activation derivatives"</span>)
+axes[<span class="hljs-number">1</span>].set_ylabel(<span class="hljs-string">"f'(x)"</span>)
+axes[<span class="hljs-number">1</span>].set_ylim(-<span class="hljs-number">0.2</span>, <span class="hljs-number">1.2</span>)
+axes[<span class="hljs-number">1</span>].legend(loc=<span class="hljs-string">"upper left"</span>, ncol=<span class="hljs-number">2</span>, frameon=<span class="hljs-literal">True</span>)
+
+output = Path(__file__).with_name(<span class="hljs-string">"activation_functions.svg"</span>)
+fig.savefig(output, <span class="hljs-built_in">format</span>=<span class="hljs-string">"svg"</span>, bbox_inches=<span class="hljs-string">"tight"</span>)
+<span class="hljs-built_in">print</span>(output)
+</code></pre></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#ml_systems">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/ml_systems/loss-functions"><small>← 上一篇</small><span>损失函数：标签结构、梯度贡献与任务指标</span></a><span></span></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#函数值与导数">函数值与导数</a></li><li><a href="#复现方法">复现方法</a></li><li><a href="#完整代码">完整代码</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>

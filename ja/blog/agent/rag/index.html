@@ -1,0 +1,198 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RAG：検索結果を検証できる回答につなげる · 韋 君豪</title><meta name="description" content="RAGは更新可能な外部知識をモデルに与えます。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/ja/blog/agent/rag/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/agent/rag/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/agent/rag/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/agent/rag/"><meta property="og:title" content="RAG：検索結果を検証できる回答につなげる · 韋 君豪"><meta property="og:description" content="RAGは更新可能な外部知識をモデルに与えます。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/ja/blog/agent/rag/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">本文へスキップ</a><div id="top"></div><header class="site-header"><a class="brand" href="/ja" aria-label="韋君豪のホームページ"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="メインナビゲーション"><a href="/ja/#about">自己紹介</a><a href="/ja/#publications">論文</a><a href="/ja/blog">ブログ <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/agent/rag" lang="zh-CN" hrefLang="zh-CN">中文</a><a href="/en/blog/agent/rag" lang="en" hrefLang="en">EN</a><a href="/ja/blog/agent/rag" lang="ja" hrefLang="ja" aria-current="true">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="パンくずリスト"><a href="/ja/blog">ブログ</a><span>/</span><a href="/ja/blog#agent">エージェント応用</a></nav><header class="article-header"><p class="eyebrow ">AGENT / 学習ノート</p><h1>RAG：検索結果を検証できる回答につなげる</h1><p class="article-description">RAGは更新可能な外部知識をモデルに与えます。</p><div class="article-byline"><span class="author-monogram">W</span><span>韋 君豪</span><span class="byline-divider"></span><span>読了目安 10 分</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><p>RAGは更新可能な外部知識をモデルに与えます。しかし、文書を取り込んでから回答を届けるまでには、情報が歪む段階がいくつもあります。信頼性は検索の再現率や引用リンクの有無だけでは評価できません。知識源、コンテキストの構成、生成の制約、引用の検証を別々に設計し、失敗を具体的な段階まで追跡します。</p>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/9582946cec0043592cf3.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="画像を拡大する" aria-label="RAG：検索結果を検証できる回答につなげる: 仕組みの図（原文のラベル）: 画像を拡大する"><img src="/figures/mechanisms/9582946cec0043592cf3.svg" alt="RAG：検索結果を検証できる回答につなげる: 仕組みの図（原文のラベル）" width="591" height="931" loading="lazy" decoding="async"></a><figcaption class="figure-hint">画像を拡大する ↗</figcaption></figure><details class="diagram-source"><summary>図の構造を見る（原文）</summary><pre><code class="language-mermaid">flowchart TD
+    D["文档接入、解析与版本"] --> I["结构感知分块与索引"]
+    Q["用户问题"] --> P["权限与元数据范围"]
+    P --> R["混合检索"]
+    I --> R
+    R --> K["重排与上下文压缩"]
+    K --> E{"证据是否足以回答"}
+    E -->|"是"| G["生成回答并逐项绑定来源"]
+    G --> V["核对结论与引用的支持关系"]
+    E -->|"否"| U["澄清、换工具或返回未知"]
+</code></pre></details></div>
+<p>検索は根拠の連鎖の一部です。図の確認点は、アクセスできるデータ、コンテキストへ入る根拠、最終的な主張を資料が支えるかをそれぞれ制約します。答えを含まない検索結果を、確定的な結論として扱ってはいけません。</p>
+<h2 id="幻觉来自哪一层">ハルシネーションはどこから生じるか</h2>
+<p>LLMは条件付き分布に基づいて次のトークンを予測します。常に正しい事実データベースを照会しているわけではありません。知識不足、曖昧な指示、学習データの矛盾、長いコンテキストの利用不足、デコード方法などで、流暢でも根拠のない回答が生じます。対策は温度を下げるだけでなく、知識源、生成制約、検証、回答保留の四層で考えます。</p>
+<h3 id="原因分类">原因の分類</h3>
+<ol>
+<li><strong>モデルの知識：</strong> 事実が未学習、古い、または情報源間で矛盾している。</li>
+<li><strong>入力：</strong> 前提が誤っている、指示対象が不明、利用可能な情報を超えている。</li>
+<li><strong>生成目標：</strong> とにかく回答するよう学習され、根拠不足で止まる振る舞いが弱い。</li>
+<li><strong>コンテキスト利用：</strong> 根拠が長すぎる、位置が悪い、矛盾する、無関係な情報に埋もれる。</li>
+<li><strong>デコード：</strong> ランダム性は出力の変動を増やすが、貪欲・低温でも同じ誤りを安定して生成し得る。</li>
+<li><strong>ツールとデータ：</strong> 検索、OCR、データベース、APIが既に誤った結果を返している。</li>
+</ol>
+<h3 id="缓解方法">対策</h3>
+<ul>
+<li>RAG、データベース、業務ツールで更新可能な知識を渡す。</li>
+<li>エンティティ候補を閉じた集合に制限し、構造化IDを使う。</li>
+<li>主張に引用を結び付け、根拠が実際に支えているか確認する。</li>
+<li>数字、日付、計算、権限に関わる事実には決定的なツールを使う。</li>
+<li>Schemaや制約付きデコードで出力構造を制限する。</li>
+<li>検証器、self-consistency、別モデルによる確認を加える。</li>
+<li>根拠不足やツール失敗時には <code>unknown</code> を返すと定義する。</li>
+<li>検索品質と生成品質を分けて評価する。</li>
+</ul>
+<p>温度を下げる主な効果はランダム性の低下です。CoTは多段階推論を助ける場合がありますが、いずれも事実性の保証にはなりません。</p>
+<h3 id="工程应用">エンジニアリングへの応用</h3>
+<p>成功したツール結果から引用を作り、キャラクターや素材の候補集合を限定し、ルールデータベースや幾何検証を使う設計が考えられます。重要な事実を自由文生成から、決定的な根拠の手順へ移せます。</p>
+<h2 id="从检索到引用的失败链路">検索から引用までの失敗経路</h2>
+<p>RAGは外部情報を生成に加えますが、検索と生成の両方が失敗し得ます。適切な文書の検索漏れ、分割による条件の欠落、再順位付けの誤り、情報の矛盾、根拠の無視、答えがないのに回答することが原因になります。</p>
+<h3 id="失败链路">失敗の連鎖</h3>
+<table>
+<thead>
+<tr>
+<th>段階</th>
+<th>典型的な失敗</th>
+<th>診断指標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>取り込み</td>
+<td>OCR誤り、表構造の欠落、旧版の混入</td>
+<td>文書網羅率、解析精度</td>
+</tr>
+<tr>
+<td>分割</td>
+<td>条件と結論が分離、チャンクの大きさが不適切</td>
+<td>答えを含むチャンクの検索可能性</td>
+</tr>
+<tr>
+<td>検索</td>
+<td>クエリ不一致、意味のずれ、権限フィルタ後に結果なし</td>
+<td>Recall@k、MRR、ゼロ件率</td>
+</tr>
+<tr>
+<td>再順位付け</td>
+<td>正しい文書の順位が下がる</td>
+<td>NDCG、Top-k命中率</td>
+</tr>
+<tr>
+<td>コンテキスト</td>
+<td>長すぎる、矛盾、中央の情報を見落とす</td>
+<td>Context precision、位置のアブレーション</td>
+</tr>
+<tr>
+<td>生成</td>
+<td>学習済み知識で根拠を上書き、誤った帰属</td>
+<td>Faithfulness、groundedness</td>
+</tr>
+<tr>
+<td>引用</td>
+<td>リンクはあるが対応する主張を支えない</td>
+<td>Citation precision/recall</td>
+</tr>
+</tbody>
+</table>
+<h3 id="改进方式">改善方法</h3>
+<ul>
+<li>クエリ書き換え、複数クエリ、メタデータフィルタ、ハイブリッド検索。</li>
+<li>親子構造、文の周辺窓、文書構造を考慮した分割。</li>
+<li>Cross-encoderやLLMによる再順位付け。</li>
+<li>生成前にコンテキストが答えを含むか確認。</li>
+<li>主張単位の引用と含意の検証。</li>
+<li>矛盾時には資料と日時を示し、無理に統合しない。</li>
+<li>検索ゼロ件なら確認、別ツール、回答保留へ進む。</li>
+<li>Webページや文書を信頼できない入力として扱い、プロンプトインジェクションに備える。</li>
+</ul>
+<h2 id="把-rag-组织成可维护的系统">保守できるシステムとしてRAGを構成する</h2>
+<p>業務用RAGは、データ、検索、生成、権限、評価、運用を合わせたシステムです。基本の流れは次のとおりです。</p>
+<pre><code class="language-text">数据接入与版本
+→ 解析/OCR/清洗
+→ 结构感知分块
+→ Embedding + 关键词/结构化索引
+→ 权限与元数据过滤
+→ Query 理解/改写
+→ Hybrid Retrieval
+→ Rerank 与上下文压缩
+→ 生成、引用与拒答
+→ 评估、反馈和可观测性
+</code></pre>
+<h3 id="各层要点">各層の役割</h3>
+<h4 id="データ層">データ層</h4>
+<ul>
+<li>文書の所有者、テナント、版、有効日時、権限を保存する。</li>
+<li>PDF、表、画像、コードに適した解析方法を選ぶ。</li>
+<li>重複を除きつつ、親子構造、章、ページ番号を残す。</li>
+<li>文書の更新・削除を索引にも反映する。</li>
+</ul>
+<h4 id="索引層">索引層</h4>
+<ul>
+<li>Dense Embeddingで意味の類似性を捉える。</li>
+<li>BM25やキーワードで固有名詞、ID、完全一致表現を補う。</li>
+<li>構造化フィールドをメタデータフィルタに使う。</li>
+<li>規模に応じてHNSW、IVF、管理型ベクトルDBを選ぶ。</li>
+<li>埋め込みモデルの更新時には索引の版を管理する。</li>
+</ul>
+<h4 id="検索層">検索層</h4>
+<ul>
+<li>質問の種類と時間範囲を特定する。</li>
+<li>クエリの書き換え・分解、多段検索を行う。</li>
+<li>ハイブリッド検索のスコアを統合する。</li>
+<li>Cross-encoderやLLMで再順位付けする。</li>
+<li>重複除去、コンテキスト圧縮、トークン予算を管理する。</li>
+</ul>
+<h4 id="生成層">生成層</h4>
+<ul>
+<li>どのコンテキストに基づく回答か明確にする。</li>
+<li>各主張を情報源に結び付ける。</li>
+<li>根拠不足なら確認するか不明と返す。</li>
+<li>ツール結果と文書本文の信頼度を区別する。</li>
+<li>後続プログラムに必要なら構造化出力を使う。</li>
+</ul>
+<h4 id="プラットフォーム層">プラットフォーム層</h4>
+<ul>
+<li>テナント分離と文書単位のACLを実施する。</li>
+<li>キャッシュキーにユーザー・プロジェクト・権限範囲を含める。</li>
+<li>クエリ、検索、再順位付け、引用、トークン、遅延、エラーを記録する。</li>
+<li>オフラインの正解集とオンラインのフィードバックで改善する。</li>
+<li>機微情報のマスキング、監査ログ、保持期間を定める。</li>
+</ul>
+<h2 id="证据质量与模型规模的取舍">根拠の品質とモデル規模の選択</h2>
+<p>正しい根拠が取れていれば、生成は抽出、要約、言い換え、構造化が中心となり、小型モデルで遅延や費用を抑えられる場合があります。ただし「小型ほど指示に従い、幻覚が少ない」は一般則ではありません。長さ、難易度、言語、指示追従、学習データに依存します。</p>
+<h3 id="适合-slm-的场景">小型言語モデルに向く場面</h3>
+<ul>
+<li>固定Schemaによる抽出と分類。</li>
+<li>一文書・短いコンテキストの質問応答。</li>
+<li>高同時接続・低遅延の社内アシスタント。</li>
+<li>エッジ配置や機微データのローカル推論。</li>
+<li>蒸留による特定タスクへの最適化。</li>
+<li>複雑な質問を強いモデルへ振り分けるルーターがある構成。</li>
+</ul>
+<h3 id="仍需要较大模型的场景">大型モデルが必要になり得る場面</h3>
+<ul>
+<li>文書間の矛盾解消や横断的推論。</li>
+<li>多段検索、複雑な計画、ツール連携。</li>
+<li>長いコンテキストから細かな根拠を統合する処理。</li>
+<li>低資源言語や専門領域の理解。</li>
+<li>質の高い説明や自由度の高い文章作成。</li>
+</ul>
+<h3 id="评估方式">評価方法</h3>
+<p>単問の正答率だけでなく、タスク成功率、引用の正確さ、回答保留率、TTFT/TPOT、リクエスト単価、最大同時接続、大型モデルへの引き継ぎ率を比較します。</p>
+<h2 id="推理计算的收益与事实性边界">推論計算の効果と事実性の限界</h2>
+<p>CoTは中間段階を生成し、算術、記号推論、計画に推論時の計算を増やします。一度のトークン遷移で結論を出す必要を減らす一方、出力トークン、遅延、誤りの伝播が増えます。生成された説明が、実際の意思決定過程を忠実に表すとも限りません。</p>
+<h3 id="更完整的理解">より広い見方</h3>
+<ul>
+<li>Few-shot CoTは導出付きの例を与える。</li>
+<li>Zero-shot CoTは段階的に考えるよう促す。</li>
+<li>Self-consistencyは複数の推論経路から回答を投票で選ぶ。</li>
+<li>推論モデルは学習・推論の両方で長い内部推論を使う場合がある。</li>
+<li>Agentのscratchpadは計画や観測を記録できるが、内部推論をすべて公開する必要はない。</li>
+</ul>
+<p>製品では通常、隠れた推論の生データではなく、簡潔で検証できる理由や計算手順を示します。CoTを隠すだけで安全性は確保できません。不要な機微情報をモデルに渡さず、プロンプト、ツール、データを独立した権限で守る必要があります。</p>
+<h3 id="代价和风险">費用とリスク</h3>
+<ul>
+<li>トークンと遅延の増加。</li>
+<li>誤った中間段階に後続の回答が引きずられる。</li>
+<li>もっともらしくても忠実でない推論文。</li>
+<li>単純な質問に強制するとノイズが増える。</li>
+<li>内部の機微情報が説明へコピーされることによる漏えい。</li>
+</ul>
+<h2 id="参考资料">参考資料</h2>
+<ul>
+<li><a href="https://arxiv.org/abs/2005.11401" target="_blank" rel="noopener noreferrer">Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks</a></li>
+<li><a href="https://arxiv.org/abs/2201.11903" target="_blank" rel="noopener noreferrer">Chain-of-Thought Prompting Elicits Reasoning in Large Language Models</a></li>
+<li><a href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noopener noreferrer">ReAct: Synergizing Reasoning and Acting in Language Models</a></li>
+</ul>
+<p><a href="https://zhuanlan.zhihu.com/p/2022080840163673941" target="_blank" rel="noopener noreferrer">Shard ZhangによるLLM関連質問の整理</a>も参考にし、仕組み、適用条件、実装上の選択を詳しく説明しています。</p></div><div class="article-end"><span>✧</span><p>読み進めながら、新たな問いを。</p><a href="/ja/blog#agent">このテーマの記事一覧へ ↑</a></div><nav class="adjacent-posts" aria-label="前後の記事"><span></span><a href="/ja/blog/agent/tool-calling"><small>次の記事 →</small><span>ツール呼び出し：モデルの意図と実行権限を分ける</span></a></nav></article><aside class="article-toc" aria-label="記事の目次"><details open=""><summary>この記事の目次 <span>↘</span></summary><ol><li><a href="#幻觉来自哪一层">ハルシネーションはどこから生じるか</a></li><li><a href="#从检索到引用的失败链路">検索から引用までの失敗経路</a></li><li><a href="#把-rag-组织成可维护的系统">保守できるシステムとしてRAGを構成する</a></li><li><a href="#证据质量与模型规模的取舍">根拠の品質とモデル規模の選択</a></li><li><a href="#推理计算的收益与事实性边界">推論計算の効果と事実性の限界</a></li><li><a href="#参考资料">参考資料</a></li></ol></details><a class="toc-back" href="/ja/blog">← すべての記事</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/ja">韋 君豪<span> Junhao Wei</span></a><p>研究の記録と、アイデアをシステムにするまでの記録。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">ページ上部へ ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="フロノノを隠す" title="フロノノを隠す"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="フロノノ。クリックで挨拶、ドラッグで移動" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="水色のフロノノのぬいぐるみ" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">矢印キーで移動、Shiftで加速。Homeで右下に戻ります。Enterまたはスペースで挨拶、Escapeで非表示にします。</span></div></div></body></html>

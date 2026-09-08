@@ -1,0 +1,99 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; upgrade-insecure-requests"><link rel="icon" href="/og.png" type="image/png"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Dijkstra：从最短路到最小体力路径 · 韦君豪</title><meta name="description" content="借助最小体力消耗路径，说明状态、距离、过期堆记录和松弛操作，并解释路径代价从求和改为最大边权时的适用条件。"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="https://isct-w.github.io/blog/algorithm/dijkstra/"><link rel="alternate" hreflang="zh-CN" href="https://isct-w.github.io/blog/algorithm/dijkstra/"><link rel="alternate" hreflang="en" href="https://isct-w.github.io/en/blog/algorithm/dijkstra/"><link rel="alternate" hreflang="ja" href="https://isct-w.github.io/ja/blog/algorithm/dijkstra/"><meta property="og:title" content="Dijkstra：从最短路到最小体力路径 · 韦君豪"><meta property="og:description" content="借助最小体力消耗路径，说明状态、距离、过期堆记录和松弛操作，并解释路径代价从求和改为最大边权时的适用条件。"><meta property="og:type" content="website"><meta property="og:url" content="https://isct-w.github.io/blog/algorithm/dijkstra/"><link rel="stylesheet" href="/assets/client-BC7vIGSH.css"><script type="module" src="/assets/site-DFoiQ4Rn.js"></script></head><body><a class="skip-link" href="#article-body">跳到正文</a><div id="top"></div><header class="site-header"><a class="brand" href="/" aria-label="韦君豪主页"><span class="brand-mark">W</span><span>JUNHAO WEI<span class="brand-sub">RESEARCH &amp; NOTES</span></span></a><nav class="primary-nav" aria-label="主导航"><a href="/#about">关于</a><a href="/#publications">论文</a><a href="/blog">博客 <span aria-hidden="true">↗</span></a></nav><div class="header-tools"><nav class="language-switcher" aria-label="Language / 语言 / 言語"><a href="/blog/algorithm/dijkstra" lang="zh-CN" hrefLang="zh-CN" aria-current="true">中文</a><a href="/en/blog/algorithm/dijkstra" lang="en" hrefLang="en">EN</a><a href="/ja/blog/algorithm/dijkstra" lang="ja" hrefLang="ja">日本語</a></nav><a class="header-github" href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></header><main class="wrap article-main"><nav class="breadcrumbs" aria-label="面包屑"><a href="/blog">博客</a><span>/</span><a href="/blog#algorithm">算法</a></nav><header class="article-header"><p class="eyebrow ">ALGORITHM / 学习笔记</p><h1>Dijkstra：从最短路到最小体力路径</h1><p class="article-description">借助最小体力消耗路径，说明状态、距离、过期堆记录和松弛操作，并解释路径代价从求和改为最大边权时的适用条件。</p><div class="article-byline"><span class="author-monogram">W</span><span>韦君豪</span><span class="byline-divider"></span><span>约 3 分钟</span></div></header><div class="article-layout"><article id="article-body"><div class="prose"><h2 id="用距离表和最小堆推进搜索">用距离表和最小堆推进搜索</h2>
+<div class="mechanism-block"><figure class="diagram"><a href="/figures/mechanisms/b085f009b6527006e37a.svg" target="_blank" rel="noopener noreferrer" class="figure-zoom" title="点击查看大图" aria-label="Dijkstra：从最短路到最小体力路径: 机制示意图: 点击查看大图"><img src="/figures/mechanisms/b085f009b6527006e37a.svg" alt="Dijkstra：从最短路到最小体力路径: 机制示意图" width="698" height="1475" loading="lazy" decoding="async"></a><figcaption class="figure-hint">点击图片查看大图 ↗</figcaption></figure><details class="diagram-source"><summary>查看图示的文字结构</summary><pre><code class="language-mermaid">flowchart TD
+ A["起点入堆，距离为 0"] --> Q{"堆非空？"}
+ Q -->|否| Z["结束：返回已求得距离"]
+ Q -->|是| B["弹出当前代价最小的记录"]
+ B --> C{"记录是否过期？"}
+ C -->|是| Q
+ C -->|否| N{"还有未处理的邻居？"}
+ N -->|否| Q
+ N -->|是| D["取下一个邻居，计算候选代价"]
+ D --> E{"比已知距离更优？"}
+ E -->|是| F["更新距离并入堆"]
+ F --> N
+ E -->|否| N
+</code></pre></details></div>
+<p>最小体力路径用 max(当前代价, 新边高度差) 计算候选值。它与求和最短路共享松弛框架，但代价定义不同。</p>
+<h2 id="问题结构与状态设计">问题结构与状态设计</h2>
+<ul>
+<li>要求从起点到各状态或终点的最优路径，且到达同一状态后，更差的代价不会使后续转移更有利，可以只保留 <code>dist[state]</code>。</li>
+<li>关键依据是：延长路径不会降低已有代价，且同一转移保持代价的优劣顺序。非负边权最短路用 <code>cost + weight</code>；本题的最小瓶颈路径用 <code>max(cost, weight)</code>，两者都满足。普通含负权边的最短路不能直接套用。</li>
+<li>每次从最小堆取出当前代价最小的状态，跳过过期记录，再尝试更新邻居。有效状态出堆时，其最优代价已确定，因此目标状态可以在此时提前返回。</li>
+<li>若后续选择还依赖剩余次数、钥匙等信息，应把这些信息加入状态，不能只按位置记录距离。</li>
+</ul>
+<h2 id="通用模板">通用模板</h2>
+<p>以下是流程骨架，其中中文步骤需要按题意实现；核心变化通常在“状态是什么”和“如何计算 <code>new_cost</code>”。</p>
+<pre><code class="hljs language-python"><span class="hljs-string">"""
+Dijkstra 通用模版：
+1. 建图 / 定义状态空间
+2. 初始化 dist
+3. 起点状态入堆
+
+while heap 非空:
+    取出当前 cost 最优的状态
+
+    如果这是过期状态:
+        continue
+
+    for 每一个可以转移到的下一状态:
+        计算 new_cost
+
+        if new_cost 优于 dist[next_state]:
+            更新 dist
+            next_state 入堆
+"""</span>
+</code></pre>
+<h2 id="例题最小体力消耗路径">例题：最小体力消耗路径</h2>
+<p>题目链接：<a href="https://leetcode.cn/problems/path-with-minimum-effort/" target="_blank" rel="noopener noreferrer">LeetCode 1631. 最小体力消耗路径</a></p>
+<pre><code class="hljs language-python"><span class="hljs-keyword">class</span> <span class="hljs-title class_">Solution</span>:
+    <span class="hljs-keyword">def</span> <span class="hljs-title function_">minimumEffortPath</span>(<span class="hljs-params">self, heights: <span class="hljs-type">List</span>[<span class="hljs-type">List</span>[<span class="hljs-built_in">int</span>]]</span>) -> <span class="hljs-built_in">int</span>:
+        <span class="hljs-string">"""
+        Dijkstra 通用模版：
+        1. 建图 / 定义状态空间
+        2. 初始化 dist
+        3. 起点状态入堆
+
+        while heap 非空:
+            取出当前 cost 最优的状态
+
+            如果这是过期状态:
+                continue
+
+            for 每一个可以转移到的下一状态:
+                计算 new_cost
+
+                if new_cost 优于 dist[next_state]:
+                    更新 dist
+                    next_state 入堆
+        """</span>
+        m, n = <span class="hljs-built_in">len</span>(heights), <span class="hljs-built_in">len</span>(heights[<span class="hljs-number">0</span>])
+        dists = [[<span class="hljs-built_in">float</span>(<span class="hljs-string">'inf'</span>)] * n <span class="hljs-keyword">for</span> _ <span class="hljs-keyword">in</span> <span class="hljs-built_in">range</span>(m)]
+        dists[<span class="hljs-number">0</span>][<span class="hljs-number">0</span>] = <span class="hljs-number">0</span>
+
+        <span class="hljs-keyword">import</span> heapq
+        pq = [(<span class="hljs-number">0</span>, <span class="hljs-number">0</span>, <span class="hljs-number">0</span>)] <span class="hljs-comment"># cost, r, c</span>
+        directions = [(<span class="hljs-number">1</span>, <span class="hljs-number">0</span>), (-<span class="hljs-number">1</span>, <span class="hljs-number">0</span>), (<span class="hljs-number">0</span>, <span class="hljs-number">1</span>), (<span class="hljs-number">0</span>, -<span class="hljs-number">1</span>)]
+        <span class="hljs-keyword">while</span> pq:
+            cost, r, c = heapq.heappop(pq)
+            <span class="hljs-keyword">if</span> cost > dists[r][c]: <span class="hljs-keyword">continue</span>
+            <span class="hljs-keyword">if</span> r == m - <span class="hljs-number">1</span> <span class="hljs-keyword">and</span> c == n - <span class="hljs-number">1</span>: <span class="hljs-keyword">return</span> cost
+            <span class="hljs-keyword">for</span> dr, dc <span class="hljs-keyword">in</span> directions:
+                nr, nc = r + dr, c + dc 
+                <span class="hljs-keyword">if</span> <span class="hljs-number">0</span> &#x3C;= nr &#x3C; m <span class="hljs-keyword">and</span> <span class="hljs-number">0</span> &#x3C;= nc &#x3C; n:
+                    edge_cost = <span class="hljs-built_in">abs</span>(heights[nr][nc] - heights[r][c])
+                    new_cost = <span class="hljs-built_in">max</span>(cost, edge_cost)
+                    <span class="hljs-keyword">if</span> new_cost &#x3C; dists[nr][nc]:
+                        dists[nr][nc] = new_cost
+                        heapq.heappush(pq, (new_cost, nr, nc))
+
+        <span class="hljs-keyword">return</span> dists[-<span class="hljs-number">1</span>][-<span class="hljs-number">1</span>]
+</code></pre>
+<h2 id="代码与模板的对应">代码与模板的对应</h2>
+<ul>
+<li><strong>状态空间</strong>：每个格子 <code>(r, c)</code> 是一个节点，上下左右移动是边。</li>
+<li><strong><code>dist</code></strong>：<code>dists[r][c]</code> 表示从起点到该格子的最小体力消耗。</li>
+<li><strong>起点入堆</strong>：<code>(0, 0, 0)</code> 表示起点当前代价为 <code>0</code>。</li>
+<li><strong>过期状态</strong>：若 <code>cost > dists[r][c]</code>，说明已有更优路径，直接跳过。</li>
+<li><strong>状态转移</strong>：边代价是相邻高度差；整条路径的体力为最大边代价，所以 <code>new_cost = max(cost, edge_cost)</code>。</li>
+<li><strong>松弛与入堆</strong>：当 <code>new_cost</code> 更小时，更新 <code>dists</code> 并把新状态加入最小堆。</li>
+</ul></div><div class="article-end"><span>✧</span><p>继续阅读，保持好奇。</p><a href="/blog#algorithm">返回主题目录 ↑</a></div><nav class="adjacent-posts" aria-label="相邻文章"><a href="/blog/algorithm/binary-tree"><small>← 上一篇</small><span>二叉树：定义递归返回值与路径边界</span></a><a href="/blog/algorithm/dynamic-programming"><small>下一篇 →</small><span>动态规划：状态、依赖与遍历顺序</span></a></nav></article><aside class="article-toc" aria-label="文章章节目录"><details open=""><summary>本篇目录 <span>↘</span></summary><ol><li><a href="#用距离表和最小堆推进搜索">用距离表和最小堆推进搜索</a></li><li><a href="#问题结构与状态设计">问题结构与状态设计</a></li><li><a href="#通用模板">通用模板</a></li><li><a href="#例题最小体力消耗路径">例题：最小体力消耗路径</a></li><li><a href="#代码与模板的对应">代码与模板的对应</a></li></ol></details><a class="toc-back" href="/blog">← 全部文章</a></aside></div></main><footer class="site-footer"><div><a class="footer-name" href="/">韦君豪<span> Junhao Wei</span></a><p>记录研究，也记录把想法变成系统的过程。</p></div><div class="footer-links"><a href="mailto:wei.titech@outlook.com">Email ↗</a><a href="https://github.com/ISCT-W" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="#top">回到顶部 ↑</a></div><div class="footer-bottom"><span>© 2026 Junhao Wei</span><span>GENERATIVE AI · AGENT SYSTEMS · RESEARCH</span></div></footer><div id="pet-root"><link rel="preload" as="image" href="/images/pet/phronono-plush-cutout.png"/><div class="floating-pet"><button type="button" class="pet-dismiss" aria-label="收起弗糯糯" title="收起弗糯糯"><span aria-hidden="true">−</span></button><div class="pet-speech" role="status" aria-live="polite" aria-atomic="true"></div><button type="button" class="pet-character" aria-label="弗糯糯，点击打招呼，拖动换个位置" aria-describedby="pet-keyboard-help"><img class="pet-sprite" src="/images/pet/phronono-plush-cutout.png" alt="浅蓝色毛绒弗糯糯" width="515" height="614" draggable="false"/><span class="pet-spark" aria-hidden="true">♡</span></button><span id="pet-keyboard-help" class="pet-sr-only">方向键移动，Shift 加速，Home 回到右下角，Enter 或空格打招呼，Escape 收起。</span></div></div></body></html>
